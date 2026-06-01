@@ -109,15 +109,46 @@ hr { border-color: #111c2a !important; }
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def parse_json(txt):
     if not txt: return None
+    # Strip markdown fences
     txt = re.sub(r'```json\s*', '', txt, flags=re.I)
     txt = re.sub(r'```\s*', '', txt)
     txt = txt.strip()
+    # Try direct parse
     try: return json.loads(txt)
     except: pass
+    # Try extracting outermost { }
     a, b = txt.find('{'), txt.rfind('}')
-    if a < 0 or b <= a: return None
-    try: return json.loads(txt[a:b+1])
-    except: return None
+    if a >= 0 and b > a:
+        try: return json.loads(txt[a:b+1])
+        except: pass
+    # Response was truncated — try to repair it
+    # Find the furthest valid { position
+    start = txt.find('{') if txt.find('{') >= 0 else 0
+    fragment = txt[start:]
+    # Remove trailing incomplete key/value pairs
+    fragment = re.sub(r',\s*"[^"]*"?\s*:\s*[^,}\]]*$', '', fragment)
+    fragment = re.sub(r',\s*"[^"]*"?\s*$', '', fragment)
+    fragment = re.sub(r',\s*$', '', fragment)
+    # Count and close open brackets/braces
+    depth_brace = 0
+    depth_bracket = 0
+    in_str = False
+    escaped = False
+    for ch in fragment:
+        if escaped: escaped = False; continue
+        if ch == '\\': escaped = True; continue
+        if ch == '"' and not escaped: in_str = not in_str; continue
+        if in_str: continue
+        if ch == '{': depth_brace += 1
+        elif ch == '}': depth_brace -= 1
+        elif ch == '[': depth_bracket += 1
+        elif ch == ']': depth_bracket -= 1
+    # Close open structures
+    fragment += ']' * max(0, depth_bracket)
+    fragment += '}' * max(0, depth_brace)
+    try: return json.loads(fragment)
+    except: pass
+    return None
 
 def delta_badge(target, current):
     try:
@@ -196,9 +227,34 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── API key check ─────────────────────────────────────────────────────────────
-api_key = st.secrets.get("ANTHROPIC_API_KEY", "") if hasattr(st, 'secrets') else ""
+# Try multiple ways to get the API key
+api_key = ""
+try:
+    api_key = st.secrets["ANTHROPIC_API_KEY"]
+except:
+    pass
 if not api_key:
-    st.error("⚠ No API key found. Add ANTHROPIC_API_KEY to your Streamlit secrets. See the README for instructions.")
+    try:
+        api_key = st.secrets.get("ANTHROPIC_API_KEY", "")
+    except:
+        pass
+if not api_key:
+    import os
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+
+if not api_key:
+    st.markdown("""
+    <div style="background:#150505;border:1px solid #dc2626;padding:20px;color:#f87171;font-size:13px;line-height:2">
+      <div style="font-family:'Syne',sans-serif;font-size:11px;letter-spacing:2px;color:#f87171;margin-bottom:12px">⚠ API KEY NOT FOUND</div>
+      <b>To fix this:</b><br>
+      1. Go to your app on <b>share.streamlit.io</b><br>
+      2. Click the <b>⋮ menu → Settings → Secrets</b><br>
+      3. Paste this (with your real key):<br>
+      <code style="background:#0a0000;padding:8px 12px;display:block;margin:8px 0;color:#fbbf24">ANTHROPIC_API_KEY = "sk-ant-..."</code>
+      4. Click <b>Save</b> — the app restarts automatically<br><br>
+      Get a key at <b>platform.anthropic.com → API Keys</b>
+    </div>
+    """, unsafe_allow_html=True)
     st.stop()
 
 # ── Stock inputs ──────────────────────────────────────────────────────────────
@@ -292,17 +348,17 @@ Return ONLY valid JSON (no markdown, no explanation):
       "pricing":{{"intrinsicValue":"$X","intrinsicMethod":"Blended","entryPrice":"$X","entryRationale":"...","analystConsensus":"$X","targetRange":"$X-$X"}},
       "ivBreakdown":[{{"method":"DCF","value":"$X","desc":"..."}},{{"method":"EV/EBITDA","value":"$X","desc":"..."}},{{"method":"Fwd P/E","value":"$X","desc":"..."}},{{"method":"P/FCF","value":"$X","desc":"..."}}],
       "topAnalysts":[{{"name":"...","firm":"...","accuracyPct":"XX%","rating":"Buy","target":"$X","thesis":"..."}}],
-      "fundamentals":{{"revenue":{{"v":"$XB","chg":"+X%","sig":"good","note":""}},"grossMargin":{{"v":"X%","chg":"","sig":"good","note":""}},"operatingMargin":{{"v":"X%","chg":"","sig":"good","note":""}},"netMargin":{{"v":"X%","chg":"","sig":"good","note":""}},"eps":{{"v":"$X","chg":"+X%","sig":"good","note":""}},"forwardEPS":{{"v":"$X","chg":"","sig":"ok","note":""}},"peRatio":{{"v":"Xx","chg":"","sig":"ok","note":""}},"forwardPE":{{"v":"Xx","chg":"","sig":"ok","note":""}},"evEbitda":{{"v":"Xx","chg":"","sig":"ok","note":""}},"debtToEquity":{{"v":"X.X","chg":"","sig":"ok","note":""}},"freeCashFlow":{{"v":"$XB","chg":"","sig":"good","note":""}},"roe":{{"v":"X%","chg":"","sig":"good","note":""}},"divYield":{{"v":"X%","chg":"","sig":"ok","note":""}}}},
+      "fundamentals":{{"revenue":{{"v":"$XB","sig":"good"}},"grossMargin":{{"v":"X%","sig":"good"}},"operatingMargin":{{"v":"X%","sig":"good"}},"netMargin":{{"v":"X%","sig":"good"}},"eps":{{"v":"$X","sig":"good"}},"forwardEPS":{{"v":"$X","sig":"ok"}},"peRatio":{{"v":"Xx","sig":"ok"}},"forwardPE":{{"v":"Xx","sig":"ok"}},"evEbitda":{{"v":"Xx","sig":"ok"}},"debtToEquity":{{"v":"X.X","sig":"ok"}},"freeCashFlow":{{"v":"$XB","sig":"good"}},"roe":{{"v":"X%","sig":"good"}},"divYield":{{"v":"X%","sig":"ok"}}}},
       "sections":{{"valuation":"one sentence","momentum":"one sentence","sentiment":"one sentence","risk":"one sentence"}}
     }}
   }}
 }}
-CRITICAL: stocks{{}} MUST contain ALL {len(valid_tickers)} tickers: {', '.join(valid_tickers)}. comparisonTable[] must have all {len(valid_tickers)}. top2[] picks best 2 but ALL appear in stocks{{}}. EXACTLY 5 analysts per stock.
+CRITICAL: stocks{{}} MUST contain ALL {len(valid_tickers)} tickers: {', '.join(valid_tickers)}. comparisonTable[] must have all {len(valid_tickers)}. top2[] picks best 2 but ALL appear in stocks{{}}. Include 5 analysts per stock, thesis max 8 words.
 SECTOR-AWARE VALUATION — identify each stock's sector and apply correct assumptions:
 Utilities (VST,NEE,DUK etc): WACC 7-9%, DCF terminal growth 1.5-2.5%, normalized FCF (3yr avg), EV/EBITDA 8-12x, P/E 14-18x, subtract actual net debt.
 Tech/Growth (NVDA,MSFT,AAPL etc): WACC 9-12%, growth 2.5-4%, EV/EBITDA 20-40x, P/E 20-35x.
 Show actual inputs in desc field e.g. "WACC 8.2%, g 2%, normalized FCF $1.8B".
-All text fields 1 sentence max."""
+All text fields max 10 words. Be extremely concise."""
 
     with st.status("Analyzing stocks...", expanded=True) as status:
         st.write(f"Researching {', '.join(valid_tickers)}...")
@@ -311,7 +367,7 @@ All text fields 1 sentence max."""
             st.write("Running valuations and fundamentals...")
             message = client.messages.create(
                 model="claude-sonnet-4-5",
-                max_tokens=6000,
+                max_tokens=8000,
                 messages=[{"role": "user", "content": prompt}]
             )
             st.write("Building report...")
@@ -570,7 +626,8 @@ if st.session_state['result']:
                     if r and r.get('v'):
                         sig = r.get('sig','ok')
                         sig_html = f'<span class="sig-good">● Strong</span>' if sig=='good' else (f'<span class="sig-bad">● Weak</span>' if sig=='bad' else f'<span class="sig-ok">● Fair</span>')
-                        frows += f'<tr><td class="mn">{lbl}</td><td style="color:#fff;font-weight:700">{r["v"]}</td><td>{sig_html}</td><td style="font-size:9px;color:#94a3b8">{r.get("note","") or r.get("chg","")}</td></tr>'
+                        note = r.get("note","") or r.get("chg","") or ""
+                        frows += f'<tr><td class="mn">{lbl}</td><td style="color:#fff;font-weight:700">{r["v"]}</td><td>{sig_html}</td><td style="font-size:9px;color:#94a3b8">{note}</td></tr>'
                 st.markdown(f'<table class="data-table"><thead><tr><th>Metric</th><th>Value</th><th>Signal</th><th>Note</th></tr></thead><tbody>{frows}</tbody></table>', unsafe_allow_html=True)
 
             # Valuation + Momentum sections
