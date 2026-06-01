@@ -208,6 +208,45 @@ def ss(key, default):
         st.session_state[key] = default
     return st.session_state[key]
 
+# ── Restore from query params on first load ──
+def load_from_url():
+    qp = st.query_params
+    tickers = ['','','']
+    shares  = ['','','']
+    prices  = ['','','']
+    holdings = [{'ticker':'','shares':'','cost':''} for _ in range(10)]
+    for i in range(3):
+        tickers[i] = qp.get(f't{i}','')
+        shares[i]  = qp.get(f's{i}','')
+        prices[i]  = qp.get(f'p{i}','')
+    for i in range(10):
+        holdings[i]['ticker'] = qp.get(f'ht{i}','')
+        holdings[i]['shares'] = qp.get(f'hs{i}','')
+        holdings[i]['cost']   = qp.get(f'hc{i}','')
+    return tickers, shares, prices, holdings
+
+def save_to_url():
+    qp = {}
+    for i in range(3):
+        if st.session_state['tickers'][i]: qp[f't{i}'] = st.session_state['tickers'][i]
+        if st.session_state['shares'][i]:  qp[f's{i}'] = st.session_state['shares'][i]
+        if st.session_state['prices'][i]:  qp[f'p{i}'] = st.session_state['prices'][i]
+    for i in range(10):
+        h = st.session_state['holdings'][i]
+        if h['ticker']: qp[f'ht{i}'] = h['ticker']
+        if h['shares']: qp[f'hs{i}'] = h['shares']
+        if h['cost']:   qp[f'hc{i}'] = h['cost']
+    st.query_params.from_dict(qp)
+
+# On first load restore from URL, then keep in session state
+if 'initialized' not in st.session_state:
+    t, s, p, h = load_from_url()
+    st.session_state['tickers']  = t
+    st.session_state['shares']   = s
+    st.session_state['prices']   = p
+    st.session_state['holdings'] = h
+    st.session_state['initialized'] = True
+
 ss('result', None)
 ss('running', False)
 ss('tickers', ['','',''])
@@ -303,6 +342,9 @@ with st.expander("▸ MY PORTFOLIO — TOP 10 HOLDINGS (optional)"):
             )
 
 st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
+
+# Save current inputs to URL so they survive refresh
+save_to_url()
 
 # ── Analyze button ────────────────────────────────────────────────────────────
 valid_tickers = [t for t in st.session_state['tickers'] if t]
