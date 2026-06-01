@@ -5,7 +5,7 @@ import re
 
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Stock Analyzer",
+    page_title="Stock Analyzer - Claude",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="collapsed",
