@@ -400,7 +400,36 @@ Return ONLY valid JSON (no markdown, no explanation):
       "ivBreakdown":[{{"method":"DCF","value":"$X","desc":"..."}},{{"method":"EV/EBITDA","value":"$X","desc":"..."}},{{"method":"Fwd P/E","value":"$X","desc":"..."}},{{"method":"P/FCF","value":"$X","desc":"..."}}],
       "topAnalysts":[{{"name":"...","firm":"...","accuracyPct":"XX%","rating":"Buy","target":"$X","thesis":"..."}}],
       "fundamentals":{{"revenue":{{"v":"$XB","sig":"good"}},"grossMargin":{{"v":"X%","sig":"good"}},"operatingMargin":{{"v":"X%","sig":"good"}},"netMargin":{{"v":"X%","sig":"good"}},"eps":{{"v":"$X","sig":"good"}},"forwardEPS":{{"v":"$X","sig":"ok"}},"peRatio":{{"v":"Xx","sig":"ok"}},"forwardPE":{{"v":"Xx","sig":"ok"}},"evEbitda":{{"v":"Xx","sig":"ok"}},"debtToEquity":{{"v":"X.X","sig":"ok"}},"freeCashFlow":{{"v":"$XB","sig":"good"}},"roe":{{"v":"X%","sig":"good"}},"divYield":{{"v":"X%","sig":"ok"}}}},
-      "sections":{{"valuation":"one sentence","momentum":"one sentence","sentiment":"one sentence","risk":"one sentence"}}
+      "sectorAnalysis":{{
+        "sector":"Sector name e.g. Utilities / Semiconductors / Cloud Software",
+        "sectorOutlook":"2-3 sentences on current sector health, tailwinds, headwinds",
+        "peerComparison":[
+          {{"peer":"Ticker","metric":"P/E or EV/EBITDA","peerVal":"X×","stockVal":"X×","verdict":"Premium/Discount/Inline"}},
+          {{"peer":"Ticker","metric":"Revenue Growth","peerVal":"X%","stockVal":"X%","verdict":"Above/Below/Inline"}},
+          {{"peer":"Ticker","metric":"Net Margin","peerVal":"X%","stockVal":"X%","verdict":"Above/Below/Inline"}},
+          {{"peer":"Ticker","metric":"FCF Yield","peerVal":"X%","stockVal":"X%","verdict":"Above/Below/Inline"}}
+        ],
+        "sectorRank":"e.g. Top quartile / Mid-tier / Laggard within sector",
+        "sectorCatalysts":"Key upcoming sector catalysts e.g. rate cuts, regulation, AI capex",
+        "sectorRisks":"Key sector-level risks e.g. margin compression, competition, regulation"
+      }},
+      "riskAnalysis":{{
+        "overallRiskRating":"Low/Medium/High/Very High",
+        "riskScore":65,
+        "businessRisk":"Competitive threats, market share, business model vulnerabilities — 2 sentences",
+        "financialRisk":"Debt levels, liquidity, interest coverage, refinancing risk — 2 sentences",
+        "macroRisk":"Interest rate sensitivity, inflation exposure, GDP sensitivity — 2 sentences",
+        "regulatoryRisk":"Regulatory threats, antitrust, environmental, policy risk — 2 sentences",
+        "valuationRisk":"Downside if multiple compresses, earnings miss scenario — 2 sentences",
+        "keyRisks":[
+          {{"risk":"Short description","severity":"High/Medium/Low","likelihood":"High/Medium/Low","mitigation":"One sentence"}},
+          {{"risk":"Short description","severity":"High/Medium/Low","likelihood":"High/Medium/Low","mitigation":"One sentence"}},
+          {{"risk":"Short description","severity":"High/Medium/Low","likelihood":"High/Medium/Low","mitigation":"One sentence"}}
+        ],
+        "bearCasePrice":"$X — price in worst-case scenario",
+        "bullCasePrice":"$X — price in best-case scenario"
+      }},
+      "sections":{{"valuation":"2 sentences","momentum":"2 sentences","sentiment":"2 sentences"}}
     }}
   }}
 }}
@@ -409,7 +438,8 @@ SECTOR-AWARE VALUATION — identify each stock's sector and apply correct assump
 Utilities (VST,NEE,DUK etc): WACC 7-9%, DCF terminal growth 1.5-2.5%, normalized FCF (3yr avg), EV/EBITDA 8-12x, P/E 14-18x, subtract actual net debt.
 Tech/Growth (NVDA,MSFT,AAPL etc): WACC 9-12%, growth 2.5-4%, EV/EBITDA 20-40x, P/E 20-35x.
 Show actual inputs in desc field e.g. "WACC 8.2%, g 2%, normalized FCF $1.8B".
-All text fields max 10 words. Be extremely concise."""
+For sectorAnalysis.peerComparison use 3-4 real sector peers. For riskAnalysis list 3 specific key risks.
+Sections text: 2 sentences each, not 10 words — be informative."""
 
     with st.status("Analyzing stocks...", expanded=True) as status:
         st.write(f"Researching {', '.join(valid_tickers)}...")
@@ -418,7 +448,7 @@ All text fields max 10 words. Be extremely concise."""
             st.write("Running valuations and fundamentals...")
             message = client.messages.create(
                 model="claude-sonnet-4-5",
-                max_tokens=8000,
+                max_tokens=12000,
                 messages=[{"role": "user", "content": prompt}]
             )
             st.write("Building report...")
@@ -685,5 +715,133 @@ if st.session_state['result']:
             for key, icon, lbl in [("valuation","◎","Valuation Analysis"),("momentum","△","Price Momentum")]:
                 if secs.get(key):
                     st.markdown(f'<div class="sec-hdr">{icon} {lbl}</div><div class="sec-body">{secs[key]}</div>', unsafe_allow_html=True)
+
+            # ── SECTOR ANALYSIS ──
+            sa = s.get('sectorAnalysis', {})
+            if sa:
+                st.markdown('<div class="sec-hdr">◈ Sector Analysis & Peer Comparison</div>', unsafe_allow_html=True)
+                # Sector header info
+                sector_html = f"""
+                <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+                  <div class="card" style="padding:10px 14px;flex:1;min-width:140px">
+                    <div class="label">Sector</div>
+                    <div style="font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:#93c5fd">{sa.get("sector","—")}</div>
+                  </div>
+                  <div class="card" style="padding:10px 14px;flex:1;min-width:140px">
+                    <div class="label">Sector Rank</div>
+                    <div style="font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:#f0f6ff">{sa.get("sectorRank","—")}</div>
+                  </div>
+                </div>
+                <div class="sec-body" style="margin-bottom:10px">{sa.get("sectorOutlook","")}</div>"""
+                st.markdown(sector_html, unsafe_allow_html=True)
+
+                # Peer comparison table
+                peers = sa.get('peerComparison', [])
+                if peers:
+                    st.markdown('<div style="font-size:8px;letter-spacing:2px;color:#94a3b8;text-transform:uppercase;margin-bottom:7px">Peer Comparison</div>', unsafe_allow_html=True)
+                    peer_rows = ""
+                    for p in peers:
+                        v = p.get("verdict","")
+                        v_color = "#4ade80" if v in ("Above","Premium","Inline") else "#f87171" if v in ("Below","Discount") else "#fbbf24"
+                        peer_rows += f"""<tr>
+                          <td style="color:#e2e8f0;font-weight:700">{p.get("peer","")}</td>
+                          <td style="color:#94a3b8">{p.get("metric","")}</td>
+                          <td style="color:#cbd5e1">{p.get("peerVal","—")}</td>
+                          <td style="color:#f0f6ff;font-weight:700">{p.get("stockVal","—")}</td>
+                          <td><span style="color:{v_color};font-size:10px">{v}</span></td>
+                        </tr>"""
+                    st.markdown(f'<table class="data-table"><thead><tr><th>Peer</th><th>Metric</th><th>Peer</th><th>This Stock</th><th>vs Peer</th></tr></thead><tbody>{peer_rows}</tbody></table>', unsafe_allow_html=True)
+
+                # Sector catalysts + risks
+                cat_risk_html = f"""
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
+                  <div class="card card-green" style="padding:11px">
+                    <div class="label">Sector Catalysts</div>
+                    <div style="font-size:11px;color:#e2e8f0;line-height:1.7;margin-top:4px">{sa.get("sectorCatalysts","—")}</div>
+                  </div>
+                  <div class="card" style="padding:11px;border-color:#dc262644;background:#150505">
+                    <div class="label">Sector Risks</div>
+                    <div style="font-size:11px;color:#e2e8f0;line-height:1.7;margin-top:4px">{sa.get("sectorRisks","—")}</div>
+                  </div>
+                </div>"""
+                st.markdown(cat_risk_html, unsafe_allow_html=True)
+
+            # ── DETAILED RISK ANALYSIS ──
+            ra = s.get('riskAnalysis', {})
+            if ra:
+                # Risk rating header
+                rating = ra.get("overallRiskRating","Medium")
+                risk_score = ra.get("riskScore", 50)
+                try: risk_score = int(risk_score)
+                except: risk_score = 50
+                r_color = "#4ade80" if rating=="Low" else "#fbbf24" if rating=="Medium" else "#f87171" if rating=="High" else "#dc2626"
+
+                st.markdown(f'<div class="sec-hdr">⚠ Detailed Risk Analysis</div>', unsafe_allow_html=True)
+                st.markdown(f"""
+                <div style="display:flex;align-items:center;gap:16px;padding:12px;background:#090f1a;border:1px solid #111c2a;margin-bottom:10px">
+                  <div>
+                    <div class="label">Overall Risk Rating</div>
+                    <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:{r_color}">{rating}</div>
+                  </div>
+                  <div>
+                    <div class="label">Risk Score</div>
+                    <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:{r_color}">{risk_score}<span style="font-size:12px;color:#5a7a99">/100</span></div>
+                  </div>
+                  <div style="flex:1">
+                    <div class="label" style="margin-bottom:5px">Risk Meter</div>
+                    <div style="height:6px;background:#1a2e48;border-radius:3px">
+                      <div style="height:6px;width:{risk_score}%;background:{r_color};border-radius:3px;transition:width 0.5s"></div>
+                    </div>
+                  </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                # Risk categories
+                risk_cats = [
+                    ("Business Risk", "businessRisk", "🏢"),
+                    ("Financial Risk", "financialRisk", "💰"),
+                    ("Macro Risk", "macroRisk", "🌐"),
+                    ("Regulatory Risk", "regulatoryRisk", "⚖️"),
+                    ("Valuation Risk", "valuationRisk", "📊"),
+                ]
+                for lbl, key, icon in risk_cats:
+                    if ra.get(key):
+                        st.markdown(f'<div class="sec-body" style="margin-bottom:6px"><span style="color:#3b82f6;font-family:Syne,sans-serif;font-size:9px;letter-spacing:1px">{icon} {lbl}: </span>{ra[key]}</div>', unsafe_allow_html=True)
+
+                # Key risks table
+                key_risks = ra.get("keyRisks", [])
+                if key_risks:
+                    st.markdown('<div style="font-size:8px;letter-spacing:2px;color:#94a3b8;text-transform:uppercase;margin:10px 0 7px">Key Risk Factors</div>', unsafe_allow_html=True)
+                    risk_rows = ""
+                    for kr in key_risks:
+                        sev = kr.get("severity","Medium")
+                        lik = kr.get("likelihood","Medium")
+                        sev_color = "#f87171" if sev=="High" else "#fbbf24" if sev=="Medium" else "#4ade80"
+                        lik_color = "#f87171" if lik=="High" else "#fbbf24" if lik=="Medium" else "#4ade80"
+                        risk_rows += f"""<tr>
+                          <td style="color:#e2e8f0">{kr.get("risk","")}</td>
+                          <td><span style="color:{sev_color};font-size:10px">● {sev}</span></td>
+                          <td><span style="color:{lik_color};font-size:10px">● {lik}</span></td>
+                          <td style="font-size:10px;color:#cbd5e1">{kr.get("mitigation","")}</td>
+                        </tr>"""
+                    st.markdown(f'<table class="data-table"><thead><tr><th>Risk</th><th>Severity</th><th>Likelihood</th><th>Mitigation</th></tr></thead><tbody>{risk_rows}</tbody></table>', unsafe_allow_html=True)
+
+                # Bull/Bear case prices
+                if ra.get("bearCasePrice") or ra.get("bullCasePrice"):
+                    bc1, bc2 = st.columns(2)
+                    with bc1:
+                        st.markdown(f"""
+                        <div class="card" style="padding:11px;border-color:#dc262644;background:#150505">
+                          <div class="label">Bear Case Price</div>
+                          <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#f87171">{ra.get("bearCasePrice","—")}</div>
+                          <div style="font-size:9px;color:#cbd5e1;margin-top:3px">Worst-case scenario</div>
+                        </div>""", unsafe_allow_html=True)
+                    with bc2:
+                        st.markdown(f"""
+                        <div class="card card-green" style="padding:11px">
+                          <div class="label">Bull Case Price</div>
+                          <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#4ade80">{ra.get("bullCasePrice","—")}</div>
+                          <div style="font-size:9px;color:#cbd5e1;margin-top:3px">Best-case scenario</div>
+                        </div>""", unsafe_allow_html=True)
 
     st.markdown('<div class="disc">FOR INFORMATIONAL PURPOSES ONLY — NOT FINANCIAL ADVICE</div>', unsafe_allow_html=True)
