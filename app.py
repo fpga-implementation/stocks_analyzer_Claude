@@ -79,24 +79,24 @@ input::placeholder { color: rgba(255,255,255,0.4) !important; }
 .verdict-tag-bull { color:#4ade80; }
 .verdict-tag-bear { color:#f87171; }
 .verdict-tag-neut { color:#fbbf24; }
-.verdict-reason { font-size:10px; color:#e2e8f0; margin-top:3px; line-height:1.5; }
+.verdict-reason { font-size:13px; color:#e2e8f0; margin-top:3px; line-height:1.5; }
 
-.sec-hdr { font-family:'Syne',sans-serif; font-size:9px; font-weight:700; letter-spacing:3px; text-transform:uppercase; color:#3b82f6; padding:8px 12px; background:#0d1825; border-bottom:1px solid #111c2a; margin-bottom:0; }
-.sec-body { padding:12px; font-size:11px; line-height:1.85; color:#e2e8f0; background:#090f1a; border:1px solid #111c2a; margin-bottom:8px; }
+.sec-hdr { font-family:'Syne',sans-serif; font-size:11px; font-weight:700; letter-spacing:3px; text-transform:uppercase; color:#3b82f6; padding:8px 12px; background:#0d1825; border-bottom:1px solid #111c2a; margin-bottom:0; }
+.sec-body { padding:12px; font-size:13px; line-height:1.85; color:#e2e8f0; background:#090f1a; border:1px solid #111c2a; margin-bottom:8px; }
 
 .divider { height:1px; background:#111c2a; margin:16px 0; }
 .disc { font-size:9px; color:#4a6a88; text-align:center; letter-spacing:1.5px; padding:20px 0; }
 
 /* Rank badge */
-.rank-gold { font-family:'Syne',sans-serif; font-size:11px; font-weight:700; color:#f59e0b; margin-right:4px; }
-.rank-silver { font-family:'Syne',sans-serif; font-size:11px; font-weight:700; color:#9ca3af; margin-right:4px; }
+.rank-gold { font-family:'Syne',sans-serif; font-size:13px; font-weight:700; color:#f59e0b; margin-right:4px; }
+.rank-silver { font-family:'Syne',sans-serif; font-size:13px; font-weight:700; color:#9ca3af; margin-right:4px; }
 
 /* Table */
-.data-table { width:100%; border-collapse:collapse; font-size:11px; }
-.data-table th { text-align:left; padding:7px 10px; font-size:8px; letter-spacing:2px; color:#94a3b8; text-transform:uppercase; border-bottom:1px solid #111c2a; background:#0d1825; font-family:'Syne',sans-serif; }
-.data-table td { padding:8px 10px; border-bottom:1px solid #090f1a; vertical-align:top; color:#e2e8f0; }
+.data-table { width:100%; border-collapse:collapse; font-size:13px; }
+.data-table th { text-align:left; padding:8px 11px; font-size:10px; letter-spacing:2px; color:#94a3b8; text-transform:uppercase; border-bottom:1px solid #111c2a; background:#0d1825; font-family:'Syne',sans-serif; }
+.data-table td { padding:10px 11px; border-bottom:1px solid #090f1a; vertical-align:top; color:#e2e8f0; }
 .data-table tr:last-child td { border-bottom:none; }
-.sig-good { color:#4ade80; } .sig-bad { color:#f87171; } .sig-ok { color:#fbbf24; }
+.sig-good { color:#4ade80; font-size:12px; } .sig-bad { color:#f87171; font-size:12px; } .sig-ok { color:#fbbf24; font-size:12px; }
 
 .stExpander { border:1px solid #1a2e48 !important; background:#0a1420 !important; }
 .stExpander > div > div { background:#0d1825 !important; }
@@ -303,12 +303,12 @@ with st.expander("▸ STOCKS TO ANALYZE (up to 5)", expanded=True):
         with c1:
             st.markdown(f'<div style="font-size:9px;color:#93c5fd;font-family:Syne,sans-serif;font-weight:700;padding-top:8px">#{i+1}</div>', unsafe_allow_html=True)
         with c2:
-            st.markdown('<div class="label">Ticker</div>', unsafe_allow_html=True)
+            st.markdown('<div class="label">Ticker or Company Name</div>', unsafe_allow_html=True)
             st.session_state['tickers'][i] = st.text_input(
-                "Ticker", value=st.session_state['tickers'][i],
-                placeholder="AAPL", max_chars=6, key=f"tk{i}",
+                "Ticker or Company Name", value=st.session_state['tickers'][i],
+                placeholder="AAPL or Apple", key=f"tk{i}",
                 label_visibility="collapsed"
-            ).upper().strip()
+            ).strip()
         with c3:
             st.markdown('<div class="label">Shares to Buy</div>', unsafe_allow_html=True)
             st.session_state['shares'][i] = st.text_input(
@@ -391,7 +391,7 @@ Return ONLY valid JSON (no markdown, no explanation):
   "comparisonTable":[{{"ticker":"X","companyName":"...","currentPrice":"$X","intrinsicValue":"$X","entryPrice":"$X","analystConsensus":"$X","overallScore":"X/10","verdictStock":"BULLISH","verdictPortfolio":"BULLISH","keyStrength":"...","keyRisk":"..."}}],
   "stocks":{{
     "TICKER":{{
-      "ticker":"X","companyName":"...","currentPrice":"$X","summary":"one sentence",
+      "ticker":"RESOLVED_SYMBOL","inputAs":"original input string","companyName":"Full Company Name","currentPrice":"$X","summary":"one sentence",
       "verdictStock":"BULLISH","verdictStockReason":"one sentence",
       "verdictPortfolio":"BULLISH","verdictPortfolioReason":"one sentence",
       "sentimentScore":70,
@@ -433,7 +433,8 @@ Return ONLY valid JSON (no markdown, no explanation):
     }}
   }}
 }}
-CRITICAL: stocks{{}} MUST contain ALL {len(valid_tickers)} tickers: {', '.join(valid_tickers)}. comparisonTable[] must have all {len(valid_tickers)}. top2[] picks best 2 but ALL appear in stocks{{}}. Include 5 analysts per stock, thesis max 8 words.
+CRITICAL STEP 1 — RESOLVE INPUTS TO TICKERS: Each input may be a ticker symbol OR a company name (possibly misspelled). Resolve each to the correct ticker symbol before analysis. Examples: "Apple" → AAPL, "Nvidia" → NVDA, "Vistra" → VST, "Mircosoft" → MSFT (fix typo), "visa inc" → V. Use the resolved ticker as the key in stocks{{}} and as the "ticker" field. If unsure, pick the closest match.
+CRITICAL STEP 2 — stocks{{}} MUST contain ALL {len(valid_tickers)} resolved tickers (one per input): inputs were [{', '.join(valid_tickers)}]. comparisonTable[] must have all {len(valid_tickers)}. top2[] picks best 2 but ALL appear in stocks{{}}. Include 5 analysts per stock, thesis max 8 words.
 SECTOR-AWARE VALUATION — identify each stock's sector and apply correct assumptions:
 Utilities (VST,NEE,DUK etc): WACC 7-9%, DCF terminal growth 1.5-2.5%, normalized FCF (3yr avg), EV/EBITDA 8-12x, P/E 14-18x, subtract actual net debt.
 Tech/Growth (NVDA,MSFT,AAPL etc): WACC 9-12%, growth 2.5-4%, EV/EBITDA 20-40x, P/E 20-35x.
@@ -503,12 +504,12 @@ if st.session_state['result']:
             <div class="card {cls}" style="position:relative">
               <div style="position:absolute;top:0;right:0;font-family:'Syne',sans-serif;font-size:8px;font-weight:700;letter-spacing:2px;padding:3px 9px;background:{'#f59e0b' if i==0 else '#4b5563'};color:{'#000' if i==0 else '#fff'}">{lbl}</div>
               <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#f0f6ff;margin-top:2px">{t.get('ticker','—')}</div>
-              <div style="font-size:9px;color:#94a3b8;margin:2px 0 8px">{t.get('companyName','')}</div>
+              <div style="font-size:11px;color:#94a3b8;margin:2px 0 8px">{t.get('companyName','')}</div>
               <div style="display:flex;align-items:baseline;gap:4px;margin-bottom:8px">
                 <span style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:{score_color}">{t.get('score','—')}</span>
-                <span style="font-size:9px;color:#94a3b8;letter-spacing:1px;text-transform:uppercase">/ 10</span>
+                <span style="font-size:11px;color:#94a3b8;letter-spacing:1px;text-transform:uppercase">/ 10</span>
               </div>
-              <div style="font-size:11px;color:#e2e8f0;line-height:1.7;border-top:1px solid #ffffff11;padding-top:8px">{t.get('buyReason','')}</div>
+              <div style="font-size:13px;color:#e2e8f0;line-height:1.8;border-top:1px solid #ffffff11;padding-top:8px">{t.get('buyReason','')}</div>
               <div style="font-size:10px;color:#4ade80;margin-top:6px">{('▸ ' + t.get('entryNote','')) if t.get('entryNote') else ''}</div>
             </div>
             """, unsafe_allow_html=True)
@@ -556,10 +557,11 @@ if st.session_state['result']:
                 <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#f0f6ff;letter-spacing:2px">
                   {rank_badge}{tk}{win_star}
                 </div>
-                <div style="font-size:10px;color:#94a3b8;margin-top:2px">{s.get('companyName','')}</div>
+                <div style="font-size:13px;color:#e2e8f0;margin-top:2px">{s.get('companyName','')}</div>
+                {('<div style="font-size:10px;color:#3b82f6;margin-top:1px">entered as: '+s.get('inputAs','')+'</div>') if s.get('inputAs') and s.get('inputAs','').upper()!=tk else ''}
                 <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
                   {'<span style="font-size:12px;color:#93c5fd;font-weight:700">$'+cur_raw+'</span>' if cur_raw else ''}
-                  {'<span style="font-size:10px;color:#cbd5e1">· '+cur_shares+' shares</span>' if cur_shares else ''}
+                  {'<span style="font-size:12px;color:#cbd5e1">· '+cur_shares+' shares</span>' if cur_shares else ''}
                 </div>
               </div>
               <div style="text-align:right">
@@ -639,9 +641,9 @@ if st.session_state['result']:
                     with ivcols[j]:
                         st.markdown(f"""
                         <div class="card" style="padding:9px 10px">
-                          <div style="font-size:7px;letter-spacing:2px;color:#94a3b8;text-transform:uppercase;margin-bottom:3px">{iv.get('method','')}</div>
+                          <div style="font-size:10px;letter-spacing:2px;color:#94a3b8;text-transform:uppercase;margin-bottom:3px">{iv.get('method','')}</div>
                           <div style="font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:#a78bfa">{iv.get('value','—')}</div>
-                          <div style="font-size:9px;color:#cbd5e1;margin-top:2px;line-height:1.4">{iv.get('desc','')}</div>
+                          <div style="font-size:11px;color:#cbd5e1;margin-top:2px;line-height:1.4">{iv.get('desc','')}</div>
                         </div>""", unsafe_allow_html=True)
 
             # Analysts
@@ -677,13 +679,13 @@ if st.session_state['result']:
                 st.markdown(f"""
                 <div class="card" style="padding:11px">
                   <div class="label">Sentiment Score</div>
-                  {'<div style="font-family:Syne,sans-serif;font-size:26px;font-weight:800;color:'+sent_color+'">'+str(sent_num)+'<span style="font-size:13px;color:#5a7a99">/100</span></div><div style="font-size:10px;color:#cbd5e1;margin-top:2px">'+sent_label+'</div>' if sent_num is not None else '<div style="font-size:11px;color:#e2e8f0;line-height:1.7">'+(s.get('sections',{}).get('sentiment','—'))+'</div>'}
+                  {'<div style="font-family:Syne,sans-serif;font-size:26px;font-weight:800;color:'+sent_color+'">'+str(sent_num)+'<span style="font-size:13px;color:#5a7a99">/100</span></div><div style="font-size:12px;color:#cbd5e1;margin-top:2px">'+sent_label+'</div>' if sent_num is not None else '<div style="font-size:13px;color:#e2e8f0;line-height:1.8">'+(s.get('sections',{}).get('sentiment','—'))+'</div>'}
                 </div>""", unsafe_allow_html=True)
             with sc2:
                 st.markdown(f"""
                 <div class="card" style="padding:11px">
                   <div class="label">Risk Profile</div>
-                  <div style="font-size:11px;color:#e2e8f0;line-height:1.7">{s.get('sections',{}).get('risk','—')}</div>
+                  <div style="font-size:13px;color:#e2e8f0;line-height:1.8">{s.get('sections',{}).get('risk','—')}</div>
                 </div>""", unsafe_allow_html=True)
 
             # Portfolio insights
@@ -707,7 +709,7 @@ if st.session_state['result']:
                         sig = r.get('sig','ok')
                         sig_html = f'<span class="sig-good">● Strong</span>' if sig=='good' else (f'<span class="sig-bad">● Weak</span>' if sig=='bad' else f'<span class="sig-ok">● Fair</span>')
                         note = r.get("note","") or r.get("chg","") or ""
-                        frows += f'<tr><td class="mn">{lbl}</td><td style="color:#fff;font-weight:700">{r["v"]}</td><td>{sig_html}</td><td style="font-size:9px;color:#94a3b8">{note}</td></tr>'
+                        frows += f'<tr><td class="mn">{lbl}</td><td style="color:#fff;font-weight:700">{r["v"]}</td><td>{sig_html}</td><td style="font-size:11px;color:#94a3b8">{note}</td></tr>'
                 st.markdown(f'<table class="data-table"><thead><tr><th>Metric</th><th>Value</th><th>Signal</th><th>Note</th></tr></thead><tbody>{frows}</tbody></table>', unsafe_allow_html=True)
 
             # Valuation + Momentum sections
@@ -757,11 +759,11 @@ if st.session_state['result']:
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
                   <div class="card card-green" style="padding:11px">
                     <div class="label">Sector Catalysts</div>
-                    <div style="font-size:11px;color:#e2e8f0;line-height:1.7;margin-top:4px">{sa.get("sectorCatalysts","—")}</div>
+                    <div style="font-size:13px;color:#e2e8f0;line-height:1.8;margin-top:4px">{sa.get("sectorCatalysts","—")}</div>
                   </div>
                   <div class="card" style="padding:11px;border-color:#dc262644;background:#150505">
                     <div class="label">Sector Risks</div>
-                    <div style="font-size:11px;color:#e2e8f0;line-height:1.7;margin-top:4px">{sa.get("sectorRisks","—")}</div>
+                    <div style="font-size:13px;color:#e2e8f0;line-height:1.8;margin-top:4px">{sa.get("sectorRisks","—")}</div>
                   </div>
                 </div>"""
                 st.markdown(cat_risk_html, unsafe_allow_html=True)
@@ -822,7 +824,7 @@ if st.session_state['result']:
                           <td style="color:#e2e8f0">{kr.get("risk","")}</td>
                           <td><span style="color:{sev_color};font-size:10px">● {sev}</span></td>
                           <td><span style="color:{lik_color};font-size:10px">● {lik}</span></td>
-                          <td style="font-size:10px;color:#cbd5e1">{kr.get("mitigation","")}</td>
+                          <td style="font-size:12px;color:#cbd5e1">{kr.get("mitigation","")}</td>
                         </tr>"""
                     st.markdown(f'<table class="data-table"><thead><tr><th>Risk</th><th>Severity</th><th>Likelihood</th><th>Mitigation</th></tr></thead><tbody>{risk_rows}</tbody></table>', unsafe_allow_html=True)
 
@@ -834,14 +836,14 @@ if st.session_state['result']:
                         <div class="card" style="padding:11px;border-color:#dc262644;background:#150505">
                           <div class="label">Bear Case Price</div>
                           <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#f87171">{ra.get("bearCasePrice","—")}</div>
-                          <div style="font-size:9px;color:#cbd5e1;margin-top:3px">Worst-case scenario</div>
+                          <div style="font-size:11px;color:#cbd5e1;margin-top:3px">Worst-case scenario</div>
                         </div>""", unsafe_allow_html=True)
                     with bc2:
                         st.markdown(f"""
                         <div class="card card-green" style="padding:11px">
                           <div class="label">Bull Case Price</div>
                           <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#4ade80">{ra.get("bullCasePrice","—")}</div>
-                          <div style="font-size:9px;color:#cbd5e1;margin-top:3px">Best-case scenario</div>
+                          <div style="font-size:11px;color:#cbd5e1;margin-top:3px">Best-case scenario</div>
                         </div>""", unsafe_allow_html=True)
 
     st.markdown('<div class="disc">FOR INFORMATIONAL PURPOSES ONLY — NOT FINANCIAL ADVICE</div>', unsafe_allow_html=True)
