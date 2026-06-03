@@ -387,8 +387,7 @@ def format_fmp_context(ticker, raw):
                         f"Published: {a.get('publishedDate','?')[:10] if a.get('publishedDate') else '?'}")
 
     lines.append(f"=== END LIVE DATA FOR {ticker} ===")
-    return "
-".join(lines)
+    return "\n".join(lines)
 
 def resolve_ticker_with_fmp(input_str, fmp_api_key):
     """Try to resolve a company name to a ticker using FMP search."""
