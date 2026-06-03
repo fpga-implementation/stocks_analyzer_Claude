@@ -431,10 +431,24 @@ Return ONLY valid JSON (no markdown, no explanation):
 }}
 CRITICAL STEP 1 — RESOLVE INPUTS TO TICKERS: Each input may be a ticker symbol OR a company name (possibly misspelled). Resolve each to the correct ticker symbol before analysis. Examples: "Apple" → AAPL, "Nvidia" → NVDA, "Vistra" → VST, "Mircosoft" → MSFT (fix typo), "visa inc" → V. Use the resolved ticker as the key in stocks{{}} and as the "ticker" field. If unsure, pick the closest match.
 CRITICAL STEP 2 — stocks{{}} MUST contain ALL {len(valid_tickers)} resolved tickers (one per input): inputs were [{', '.join(valid_tickers)}]. comparisonTable[] must have all {len(valid_tickers)}. top2[] picks best 2 but ALL appear in stocks{{}}. Include 5 analysts per stock, thesis max 8 words.
-SECTOR-AWARE VALUATION — identify each stock's sector and apply correct assumptions:
+SECTOR-AWARE VALUATION — FIRST check if the company is profitable:
+
+PRE-PROFIT / HIGH-GROWTH COMPANIES (negative earnings, negative FCF, negative EBITDA — e.g. RKLB, IONQ, JOBY, LUNR, ASTR, early-stage biotech/space/EV):
+- DO NOT use standard DCF, EV/EBITDA, or P/E — they will produce misleading low values
+- USE THESE MODELS INSTEAD:
+  1. EV/Revenue: compare to high-growth peers (space: 10-25x revenue; SaaS: 8-20x; EV: 3-8x)
+  2. Forward DCF on projected profitability: use analyst consensus FCF estimates for 2026-2028 when company turns profitable, discount back at WACC 12-15%
+  3. P/S (Price/Sales): compare to sector peers at similar growth rates
+  4. Scenario-weighted value: bull case (full execution) × 40% + base case × 40% + bear case × 20%
+- NOTE in ivBreakdown: "Pre-profit company — traditional DCF/P/E not applicable. Using EV/Revenue and forward estimates."
+- Analyst consensus targets for these stocks often lag the market significantly — note this explicitly
+
+PROFITABLE COMPANIES:
 Utilities (VST,NEE,DUK etc): WACC 7-9%, DCF terminal growth 1.5-2.5%, normalized FCF (3yr avg), EV/EBITDA 8-12x, P/E 14-18x, subtract actual net debt.
-Tech/Growth (NVDA,MSFT,AAPL etc): WACC 9-12%, growth 2.5-4%, EV/EBITDA 20-40x, P/E 20-35x.
-Show actual inputs in desc field e.g. "WACC 8.2%, g 2%, normalized FCF $1.8B".
+Tech/Growth profitable (NVDA,MSFT,AAPL etc): WACC 9-12%, growth 2.5-4%, EV/EBITDA 20-40x, P/E 20-35x.
+Financials: use P/B 1-2x and P/E, skip EV/EBITDA.
+Industrials/Energy: WACC 8-10%, EV/EBITDA 6-10x, cycle-normalized earnings.
+Show actual inputs in desc field e.g. "WACC 8.2%, g 2%, normalized FCF $1.8B" or "EV/Revenue 15x on $601M TTM revenue".
 For sectorAnalysis.peerComparison use 3-4 real sector peers. For riskAnalysis list 3 specific key risks.
 ENTRY PRICE METHODOLOGY — use ALL three inputs together:
 1. VALUATION FLOOR: intrinsic value × 0.85 (15% margin of safety)
