@@ -7,6 +7,12 @@ import aiohttp
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import urllib.request
 import urllib.parse
+import html as html_lib
+
+def esc(value):
+    """Escape user-provided strings before embedding in HTML to prevent XSS."""
+    if value is None: return ''
+    return html_lib.escape(str(value))
 
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -569,7 +575,7 @@ port_val   = sum(float(h['shares']) * float(h['cost']) for h in port_holds)
 valid_tickers = [t for t in st.session_state['tickers'] if t]
 
 # ── Analyze button ────────────────────────────────────────────────────────────
-valid_tickers = [t for t in st.session_state['tickers'] if t]
+# valid_tickers derived from session_state above
 btn_label = f"ANALYZE {len(valid_tickers)} STOCK{'S' if len(valid_tickers)!=1 else ''}" if valid_tickers else "ENTER A TICKER TO ANALYZE"
 
 
@@ -824,8 +830,8 @@ if st.session_state['result']:
             t2_ent = t2_pp.get('entryPrice','')
             badge_bg  = '#f59e0b' if i==0 else '#4b5563'
             badge_clr = '#000'    if i==0 else '#fff'
-            entry_note = t.get('entryNote','')
-            buy_reason = t.get('buyReason','')
+            entry_note = esc(t.get('entryNote',''))
+            buy_reason = esc(t.get('buyReason',''))
 
             price_pills = ''
             if t2_iv:
@@ -903,11 +909,11 @@ if st.session_state['result']:
         win_star = ' ★' if is_win else ''
 
         # Pre-build all variables — keep f-string clean
-        company_name   = s.get('companyName','')
+        company_name   = esc(s.get('companyName',''))
         overall_score  = row.get('overallScore','—')
-        input_as       = s.get('inputAs','')
-        v_stock_reason = s.get('verdictStockReason','')
-        v_port_reason  = s.get('verdictPortfolioReason','')
+        input_as       = esc(s.get('inputAs',''))
+        v_stock_reason = esc(s.get('verdictStockReason',''))
+        v_port_reason  = esc(s.get('verdictPortfolioReason',''))
         port_label     = "Portfolio Synergy" if port_holds else "Portfolio Context"
         vc             = verdict_cls(vs)
         vcp            = verdict_cls(vp)
@@ -918,8 +924,8 @@ if st.session_state['result']:
         entry_val      = pp.get('entryPrice','')
 
         # Build conditional snippets
-        price_part   = ("$" + cur_raw) if cur_raw   else ""
-        shares_part  = cur_shares      if cur_shares else ""
+        price_part   = ("$" + esc(cur_raw)) if cur_raw else ""
+        shares_part  = esc(cur_shares) if cur_shares else ""
         inputas_part = ("entered as: " + input_as) if (input_as and input_as.upper() != tk) else ""
 
         # Price strip — intrinsic value, consensus, entry
