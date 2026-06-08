@@ -627,15 +627,22 @@ _btn_base = (
     "transition:background .2s;display:block;text-align:center;"
     "text-decoration:none;"
 )
+# Build URLs that preserve existing query params
+_current_params = dict(st.query_params)
+_current_params.pop('action', None)
+_param_str = '&'.join(f'{k}={v}' for k, v in _current_params.items())
+_stop_url  = f"?action=stop&{_param_str}"  if _param_str else "?action=stop"
+_clear_url = "?action=clear"  # clear intentionally wipes everything
+
 st.markdown(f"""
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;margin-bottom:6px">
-  <a href="?action=stop" style="text-decoration:none;{'pointer-events:none;' if not is_running else ''}">
+  <a href="{_stop_url}" style="text-decoration:none;{'pointer-events:none;' if not is_running else ''}">
     <div style="{_btn_base}background:{_stop_bg};border:1px solid {_stop_bdr};
                 color:{_stop_clr};cursor:{_stop_cur};opacity:{_stop_op}">
       &#9632; STOP
     </div>
   </a>
-  <a href="?action=clear" style="text-decoration:none">
+  <a href="{_clear_url}" style="text-decoration:none">
     <div style="{_btn_base}background:#2d2500;border:1px solid #fbbf24;
                 color:#fde68a;cursor:pointer">
       &#10005; CLEAR
