@@ -56,6 +56,23 @@ input::placeholder { color: rgba(255,255,255,0.4) !important; }
 .stButton > button:disabled { background: #1e2d3d !important; color: #7a9ab8 !important; }
 
 /* Stop button */
+button[kind="secondary"][data-testid*="btn_stop"],
+.stButton:has(button[data-testid*="btn_stop"]) button {
+    background: transparent !important; border: 1px solid #dc2626 !important;
+    color: #f87171 !important;
+}
+/* Clear button */
+button[kind="secondary"][data-testid*="btn_clear"],
+.stButton:has(button[data-testid*="btn_clear"]) button {
+    background: transparent !important; border: 1px solid #4b5563 !important;
+    color: #9ca3af !important;
+}
+/* Disabled stop/clear — muted */
+.stButton > button:disabled {
+    opacity: 0.4 !important;
+}
+
+/* Stop button */
 .stop-btn > button { background: transparent !important; border: 1px solid #dc2626 !important; color: #f87171 !important; }
 .stop-btn > button:hover { background: #150505 !important; }
 
@@ -580,8 +597,52 @@ btn_label = f"ANALYZE {len(valid_tickers)} STOCK{'S' if len(valid_tickers)!=1 el
 
 
 
-if st.button(btn_label, disabled=not valid_tickers or st.session_state['running']):
+# ── Button row: Analyze | Stop | Clear — all always visible ──
+bcol1, bcol2, bcol3 = st.columns([3, 1, 1])
+with bcol1:
+    analyze_clicked = st.button(
+        btn_label,
+        disabled=not valid_tickers or st.session_state['running'],
+        use_container_width=True,
+        key="btn_analyze"
+    )
+with bcol2:
+    stop_clicked = st.button(
+        "■ STOP",
+        disabled=not st.session_state['running'],
+        use_container_width=True,
+        key="btn_stop"
+    )
+    if stop_clicked:
+        st.session_state['running'] = False
+        st.session_state['stop_requested'] = True
+        st.rerun()
+with bcol3:
+    clear_clicked = st.button(
+        "✕ CLEAR",
+        disabled=False,
+        use_container_width=True,
+        key="btn_clear"
+    )
+    if clear_clicked:
+        for key in ['result','running','data_source','fmp_tickers','stop_requested']:
+            if key in ('result','data_source'):    st.session_state[key] = None
+            elif key == 'running':                 st.session_state[key] = False
+            elif key == 'fmp_tickers':             st.session_state[key] = []
+            else:                                  st.session_state[key] = False
+        st.session_state['tickers']     = ['','','','','']
+        st.session_state['shares']      = ['','','','','']
+        st.session_state['prices']      = ['','','','','']
+        st.session_state['holdings']    = [{'ticker':'','shares':'','cost':''} for _ in range(10)]
+        st.session_state['initialized'] = False
+        st.query_params.clear()
+        st.rerun()
+
+ss('stop_requested', False)
+
+if analyze_clicked:
     st.session_state['running'] = True
+    st.session_state['stop_requested'] = False
     st.session_state['result'] = None
 
     port_holds = [h for h in st.session_state['holdings'] if h['ticker'] and h['shares'] and h['cost']]
@@ -685,7 +746,12 @@ Sections text: 2 sentences each, not 10 words — be informative."""
 
     with st.status("Analyzing stocks...", expanded=True) as status:
         st.write(f"Resolving tickers and fetching live data...")
+        st.info("💡 Keep this tab open and active during analysis. Streamlit pauses when the tab is hidden on mobile browsers.")
         try:
+            if st.session_state.get('stop_requested'):
+                st.warning("Analysis stopped by user.")
+                st.session_state['running'] = False
+                st.stop()
             client = anthropic.Anthropic(api_key=api_key)
 
             # ── Step 1: Resolve tickers ──
@@ -721,10 +787,15 @@ Sections text: 2 sentences each, not 10 words — be informative."""
 
             enriched_prompt = prompt + live_data_block
 
+            if st.session_state.get('stop_requested'):
+                st.warning("Analysis stopped by user.")
+                st.session_state['running'] = False
+                st.stop()
+
             st.write("Running AI analysis and valuations...")
             message = client.messages.create(
                 model="claude-sonnet-4-5",
-                max_tokens=12000,
+                max_tokens=16000,
                 messages=[{"role": "user", "content": enriched_prompt}]
             )
             st.write("Building report...")
