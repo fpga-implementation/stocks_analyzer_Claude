@@ -641,10 +641,19 @@ with bcol3:
 ss('stop_requested', False)
 ss('raw_response', None)
 
-if analyze_clicked:
+if analyze_clicked and not st.session_state['running']:
+    # Phase 1: set running=True and rerun so Stop button activates BEFORE analysis starts
     st.session_state['running'] = True
     st.session_state['stop_requested'] = False
     st.session_state['result'] = None
+    st.session_state['do_analyze'] = True
+    st.rerun()
+
+ss('do_analyze', False)
+
+if st.session_state.get('do_analyze') and st.session_state['running']:
+    # Phase 2: page has re-rendered with Stop enabled, now run analysis
+    st.session_state['do_analyze'] = False
 
     port_holds = [h for h in st.session_state['holdings'] if h['ticker'] and h['shares'] and h['cost']]
     port_val = sum(float(h['shares']) * float(h['cost']) for h in port_holds)
