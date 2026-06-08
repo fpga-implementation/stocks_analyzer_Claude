@@ -55,32 +55,7 @@ input::placeholder { color: rgba(255,255,255,0.4) !important; }
 .stButton > button:hover { background: #2563eb !important; }
 .stButton > button:disabled { background: #1e2d3d !important; color: #7a9ab8 !important; }
 
-/* Stop button — light red */
-div[data-testid="column"]:nth-child(2) .stButton > button {
-    background: #2d0a0a !important;
-    border: 1px solid #f87171 !important;
-    color: #fca5a5 !important;
-}
-div[data-testid="column"]:nth-child(2) .stButton > button:hover:not(:disabled) {
-    background: #450a0a !important;
-    border-color: #ef4444 !important;
-}
-div[data-testid="column"]:nth-child(2) .stButton > button:disabled {
-    background: #1a0808 !important;
-    border: 1px solid #7f1d1d55 !important;
-    color: #7f1d1d !important;
-    opacity: 1 !important;
-}
-/* Clear button — light yellow */
-div[data-testid="column"]:nth-child(3) .stButton > button {
-    background: #2d2500 !important;
-    border: 1px solid #fbbf24 !important;
-    color: #fde68a !important;
-}
-div[data-testid="column"]:nth-child(3) .stButton > button:hover {
-    background: #3d3200 !important;
-    border-color: #f59e0b !important;
-}
+
 
 /* Stop button */
 .stop-btn > button { background: transparent !important; border: 1px solid #dc2626 !important; color: #f87171 !important; }
@@ -607,7 +582,15 @@ btn_label = f"ANALYZE {len(valid_tickers)} STOCK{'S' if len(valid_tickers)!=1 el
 
 
 
-# ── Button row: Analyze | Stop | Clear — all always visible ──
+# ── Button row: Analyze | Stop | Clear ──
+st.markdown(
+    '<style>'
+    '#stop-wrap button { background-color: #2d0a0a !important; border: 1px solid #f87171 !important; color: #fca5a5 !important; }'
+    '#stop-wrap button:disabled { background-color: #110303 !important; border-color: #3d0a0a !important; color: #5a1a1a !important; }'
+    '#clear-wrap button { background-color: #2d2500 !important; border: 1px solid #fbbf24 !important; color: #fde68a !important; }'
+    '</style>',
+    unsafe_allow_html=True
+)
 bcol1, bcol2, bcol3 = st.columns([3, 1, 1])
 with bcol1:
     analyze_clicked = st.button(
@@ -617,23 +600,27 @@ with bcol1:
         key="btn_analyze"
     )
 with bcol2:
+    st.markdown('<div id="stop-wrap">', unsafe_allow_html=True)
     stop_clicked = st.button(
         "■ STOP",
         disabled=not st.session_state['running'],
         use_container_width=True,
         key="btn_stop"
     )
+    st.markdown('</div>', unsafe_allow_html=True)
     if stop_clicked:
         st.session_state['running'] = False
         st.session_state['stop_requested'] = True
         st.rerun()
 with bcol3:
+    st.markdown('<div id="clear-wrap">', unsafe_allow_html=True)
     clear_clicked = st.button(
         "✕ CLEAR",
         disabled=False,
         use_container_width=True,
         key="btn_clear"
     )
+    st.markdown('</div>', unsafe_allow_html=True)
     if clear_clicked:
         for key in ['result','running','data_source','fmp_tickers','stop_requested']:
             if key in ('result','data_source'):    st.session_state[key] = None
