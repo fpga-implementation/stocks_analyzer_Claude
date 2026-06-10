@@ -1771,15 +1771,13 @@ if st.session_state['result']:
             if sa:
                 st.markdown('<div class="sec-hdr">◈ Sector Analysis & Peer Comparison</div>', unsafe_allow_html=True)
                 # Sector header info
-                sector_sector = esc(sa.get('sector','—'))
-                sector_rank   = esc(sa.get('sectorRank','—'))
-                sector_outlook= esc(sa.get('sectorOutlook',''))
-                sector_html = (
-                    '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">'
-                    '<div class="card" style="padding:10px 14px;flex:1;min-width:140px">'
-                    '<div class="label">Sector</div>'
-                    f'<div style="font-family:Syne,sans-serif;font-size:14px;font-weight:700;color:#93c5fd">{sector_sector}</div>'
-                    '</div>'
-                    '<div class="card" style="padding:10px 14px;flex:1;min-width:140px">'
-                    '<div class="label">Sector Rank</div>'
-                    f'<div style="font-fa
+                sector_sector  = esc(sa.get('sector','—'))
+                sector_rank    = esc(sa.get('sectorRank','—'))
+                sector_outlook = esc(sa.get('sectorOutlook',''))
+                sector_html  = '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">'
+                sector_html += '<div class="card" style="padding:10px 14px;flex:1;min-width:140px">'
+                sector_html += '<div class="label">Sector</div>'
+                sector_html += f'<div style="font-family:Syne,sans-serif;font-size:14px;font-weight:700;color:#93c5fd">{sector_sector}</div>'
+                sector_html += '</div>'
+                sector_html += '<div class="card" style="padding:10px 14px;flex:1;min-width:140px">'
+                sector_html += '<div class="label">Sector Rank<
