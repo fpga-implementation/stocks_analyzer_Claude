@@ -654,6 +654,8 @@ st.markdown(f"""
 
 ss('stop_requested', False)
 ss('raw_response', None)
+ss('fmp_raw_data', {})
+ss('fmp_locked', {})
 
 if analyze_clicked and not st.session_state['running']:
     # Phase 1: set running=True and rerun so Stop button activates BEFORE analysis starts
@@ -689,7 +691,7 @@ if st.session_state.get('do_analyze') and st.session_state['running']:
     cand_str = ", ".join(cand_list)
 
     prompt = f"""You are a senior equity analyst. Analyze these stocks: {cand_str}. {port_note}
-Live financial data will be appended below — use those exact numbers for all calculations.
+Live financial data will be appended below. IMPORTANT: Use the EXACT Current Price from the live data for the currentPrice field in your JSON response. Do NOT use your training data prices — they are outdated.
 
 Return ONLY valid JSON (no markdown, no explanation):
 {{
@@ -703,7 +705,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       "verdictPortfolio":"BULLISH","verdictPortfolioReason":"one sentence",
       "sentimentScore":70,
       "portfolioInsights":{{"concentrationRisk":"...","sectorOverlap":"...","correlationNote":"...","diversificationImpact":"...","recommendation":"..."}},
-      "pricing":{{"intrinsicValue":"$X","intrinsicMethod":"Blended","entryPrice":"$X — suggested entry price","entryRationale":"Based on: (1) intrinsic value with 15% margin of safety, (2) key technical support levels from 1-year price chart (50-day MA, 200-day MA, major support zones), and (3) historical price behavior near these levels. Cite the specific support level or MA that anchors this price.","analystConsensus":"$X","targetRange":"$X-$X"}},
+      "pricing":{{"intrinsicValue":"$X (note: if FMP DCF data is provided it will override this)","intrinsicMethod":"Blended","entryPrice":"$X — suggested entry price","entryRationale":"Based on: (1) intrinsic value with 15% margin of safety, (2) key technical support levels from 1-year price chart (50-day MA, 200-day MA, major support zones), and (3) historical price behavior near these levels. Cite the specific support level or MA that anchors this price.","analystConsensus":"$X","targetRange":"$X-$X"}},
       "ivBreakdown":[{{"method":"DCF","value":"$X","desc":"..."}},{{"method":"EV/EBITDA","value":"$X","desc":"..."}},{{"method":"Fwd P/E","value":"$X","desc":"..."}},{{"method":"P/FCF","value":"$X","desc":"..."}}],
       "topAnalysts":[{{"name":"...","firm":"...","accuracyPct":"XX%","rating":"Buy","target":"$X","thesis":"..."}}],
       "fundamentals":{{"revenue":{{"v":"$XB","sig":"good"}},"grossMargin":{{"v":"X%","sig":"good"}},"operatingMargin":{{"v":"X%","sig":"good"}},"netMargin":{{"v":"X%","sig":"good"}},"eps":{{"v":"$X","sig":"good"}},"forwardEPS":{{"v":"$X","sig":"ok"}},"peRatio":{{"v":"Xx","sig":"ok"}},"forwardPE":{{"v":"Xx","sig":"ok"}},"evEbitda":{{"v":"Xx","sig":"ok"}},"debtToEquity":{{"v":"X.X","sig":"ok"}},"freeCashFlow":{{"v":"$XB","sig":"good"}},"roe":{{"v":"X%","sig":"good"}},"divYield":{{"v":"X%","sig":"ok"}}}},
@@ -797,15 +799,109 @@ Sections text: 2 sentences each, not 10 words — be informative."""
                         raw = fut.result()
                         fmp_contexts[tk] = format_fmp_context(tk, raw)
                         st.write(f"  ✓ {tk} live data fetched")
+                        if 'fmp_raw_data' not in st.session_state:
+                            st.session_state['fmp_raw_data'] = {}
+                        st.session_state['fmp_raw_data'][tk] = raw
             else:
                 st.warning("⚠ FMP_API_KEY not set — using Claude training data only. Add FMP_API_KEY to Streamlit secrets for live data.")
 
-            # ── Step 3: Build enriched prompt with live data ──
+            # ── Step 3: Extract key numbers from FMP and build locked data block ──
+            # These numbers are extracted directly and injected as REQUIRED values
+            # Claude MUST use them — they are not suggestions
+            locked_data = {}  # ticker -> dict of locked fields
             live_data_block = ""
-            if fmp_contexts:
-                live_data_block = "\n\nLIVE MARKET DATA (use these exact numbers — do not estimate or override):\n"
-                live_data_block += "\n\n".join(fmp_contexts.values())
-                live_data_block += "\n\nIMPORTANT: The live data above is from Financial Modeling Prep (real-time). Use ALL provided numbers directly in your analysis — current price, ratios, analyst targets, DCF, estimates. Do not replace them with your own estimates."
+
+            if fmp_contexts and st.session_state.get('fmp_raw_data'):
+                fmp_raw = st.session_state['fmp_raw_data']
+                locked_lines = []
+                for tk, raw_fmp in fmp_raw.items():
+                    locked = {}
+                    # Current price
+                    q = (raw_fmp.get("quote") or [{}])
+                    q = q[0] if isinstance(q, list) and q else q if isinstance(q, dict) else {}
+                    if q.get("price"):
+                        p = q["price"]
+                        locked["currentPrice"] = f"${p:,.2f}" if isinstance(p,(int,float)) else f"${p}"
+                        locked["52wkHigh"]  = q.get("yearHigh","N/A")
+                        locked["52wkLow"]   = q.get("yearLow","N/A")
+                        locked["mktCap"]    = q.get("marketCap","N/A")
+                        locked["pe"]        = q.get("pe","N/A")
+                        locked["ma50"]      = q.get("priceAvg50","N/A")
+                        locked["ma200"]     = q.get("priceAvg200","N/A")
+                    # Analyst consensus target
+                    tgt = raw_fmp.get("targets")
+                    if isinstance(tgt, list) and tgt: tgt = tgt[0]
+                    if isinstance(tgt, dict) and tgt.get("targetConsensus"):
+                        tc = tgt["targetConsensus"]
+                        locked["analystConsensus"] = f"${tc}" if not str(tc).startswith("$") else str(tc)
+                        locked["analystTargetHigh"] = tgt.get("targetHigh","N/A")
+                        locked["analystTargetLow"]  = tgt.get("targetLow","N/A")
+                        locked["analystTargetMedian"] = tgt.get("targetMedian","N/A")
+                    # FMP DCF
+                    dcf = raw_fmp.get("dcf")
+                    if isinstance(dcf, list) and dcf: dcf = dcf[0]
+                    if isinstance(dcf, dict) and dcf.get("dcf"):
+                        locked["fmpDCF"] = f"${dcf['dcf']}"
+                    # Key ratios
+                    r = (raw_fmp.get("ratios") or [{}])
+                    r = r[0] if isinstance(r, list) and r else r if isinstance(r, dict) else {}
+                    if r:
+                        def fmt_r(v):
+                            if v is None: return "N/A"
+                            try: return f"{float(v):.2f}"
+                            except: return str(v)
+                        locked["peRatio"]   = fmt_r(r.get("peRatioTTM"))
+                        locked["evEbitda"]  = fmt_r(r.get("enterpriseValueMultipleTTM"))
+                        locked["psRatio"]   = fmt_r(r.get("priceToSalesRatioTTM"))
+                        locked["netMargin"] = f"{float(r.get('netProfitMarginTTM',0))*100:.1f}%" if r.get("netProfitMarginTTM") else "N/A"
+                        locked["grossMargin"] = f"{float(r.get('grossProfitMarginTTM',0))*100:.1f}%" if r.get("grossProfitMarginTTM") else "N/A"
+                        locked["roe"]       = f"{float(r.get('returnOnEquityTTM',0))*100:.1f}%" if r.get("returnOnEquityTTM") else "N/A"
+                        locked["debtEq"]    = fmt_r(r.get("debtEquityRatioTTM"))
+                        locked["fcfYield"]  = f"{float(r.get('freeCashFlowYieldTTM',0))*100:.1f}%" if r.get("freeCashFlowYieldTTM") else "N/A"
+                    # Income
+                    inc = (raw_fmp.get("income") or [{}])
+                    inc = inc[0] if isinstance(inc, list) and inc else {}
+                    if inc:
+                        def fm(v):
+                            if v is None: return "N/A"
+                            try:
+                                n=float(v)
+                                if abs(n)>=1e9: return f"${n/1e9:.2f}B"
+                                if abs(n)>=1e6: return f"${n/1e6:.1f}M"
+                                return f"${n:,.0f}"
+                            except: return str(v)
+                        locked["revenue"]  = fm(inc.get("revenue"))
+                        locked["ebitda"]   = fm(inc.get("ebitda"))
+                        locked["netIncome"]= fm(inc.get("netIncome"))
+                        locked["eps"]      = str(inc.get("eps","N/A"))
+                    # Forward estimates
+                    est = (raw_fmp.get("estimates") or [{}])
+                    est = est[0] if isinstance(est, list) and est else {}
+                    if est:
+                        locked["fwdEPS"]        = str(est.get("estimatedEpsAvg","N/A"))
+                        locked["fwdRevenue"]     = fm(est.get("estimatedRevenueAvg")) if est.get("estimatedRevenueAvg") else "N/A"
+                        locked["numAnalysts"]    = str(est.get("numberAnalystEstimatedRevenue","N/A"))
+
+                    locked_data[tk] = locked
+
+                    # Build locked data section for prompt
+                    locked_lines.append(f"\n--- LOCKED LIVE DATA FOR {tk} (from FMP — these values ARE FINAL, do not change them) ---")
+                    for k, v in locked.items():
+                        locked_lines.append(f"  {k}: {v}")
+                    locked_lines.append(f"--- END LOCKED DATA FOR {tk} ---")
+
+                live_data_block = (
+                    "\n\n=== FINANCIAL MODELING PREP LIVE DATA ==="
+                    "\nTHESE ARE MANDATORY VALUES. You MUST use them exactly as provided."
+                    "\nDo NOT substitute your own estimates. Do NOT use training data prices."
+                    "\nThe currentPrice, analystConsensus, and all ratios below are real-time."
+                    "\n" + "\n".join(locked_lines) +
+                    "\n\n" + "\n\n".join(fmp_contexts.values()) +
+                    "\n=== END FMP DATA ==="
+                )
+
+                # Also store locked_data for post-processing override
+                st.session_state['fmp_locked'] = locked_data
 
             enriched_prompt = prompt + live_data_block
 
@@ -844,9 +940,100 @@ Sections text: 2 sentences each, not 10 words — be informative."""
             parsed = parse_json(txt)
             if not parsed:
                 st.error(f"Could not parse response. Raw preview: {txt[:400]}")
-                # Save raw for debugging
                 st.session_state['raw_response'] = txt
             else:
+                # ── Hard override: inject ALL locked FMP values into parsed JSON ──
+                locked = st.session_state.get('fmp_locked', {})
+                if locked and parsed.get("stocks"):
+                    for tk_key, lk in locked.items():
+                        for sk in list(parsed["stocks"].keys()):
+                            if sk.upper() == tk_key.upper():
+                                s_data = parsed["stocks"][sk]
+                                if lk.get("currentPrice"):
+                                    s_data["currentPrice"] = lk["currentPrice"]
+                                if "pricing" not in s_data or not s_data["pricing"]:
+                                    s_data["pricing"] = {}
+                                if lk.get("analystConsensus"):
+                                    s_data["pricing"]["analystConsensus"] = lk["analystConsensus"]
+                                if lk.get("analystTargetHigh") and lk.get("analystTargetLow"):
+                                    s_data["pricing"]["targetRange"] = f"${lk['analystTargetLow']} – ${lk['analystTargetHigh']}"
+                                if lk.get("fmpDCF"):
+                                    s_data["pricing"]["fmpDCFValue"] = lk["fmpDCF"]
+                                    # Use FMP DCF as the primary intrinsic value
+                                    s_data["pricing"]["intrinsicValue"] = lk["fmpDCF"]
+                                    s_data["pricing"]["intrinsicMethod"] = "FMP DCF Model (live)"
+                                    # Also update ivBreakdown DCF entry if it exists
+                                    if "ivBreakdown" in s_data and isinstance(s_data["ivBreakdown"], list):
+                                        for iv in s_data["ivBreakdown"]:
+                                            if isinstance(iv, dict) and "DCF" in iv.get("method","").upper():
+                                                iv["value"] = lk["fmpDCF"]
+                                                iv["desc"] = "Source: Financial Modeling Prep DCF model (live data)"
+                                                break
+                                        else:
+                                            # Insert FMP DCF as first entry
+                                            s_data["ivBreakdown"].insert(0, {
+                                                "method": "FMP DCF",
+                                                "value": lk["fmpDCF"],
+                                                "desc": "Source: Financial Modeling Prep DCF model (live data)"
+                                            })
+                                    # Update comparisonTable intrinsicValue too
+                                    if parsed.get("comparisonTable"):
+                                        for row in parsed["comparisonTable"]:
+                                            if row.get("ticker","").upper() == tk_key.upper():
+                                                row["intrinsicValue"] = lk["fmpDCF"]
+                                if "fundamentals" not in s_data or not s_data["fundamentals"]:
+                                    s_data["fundamentals"] = {}
+                                f = s_data["fundamentals"]
+                                def _set(key, val):
+                                    if val and val != "N/A":
+                                        if key not in f: f[key] = {}
+                                        f[key]["v"] = val
+                                        f[key].setdefault("sig", "ok")
+                                _set("revenue",      lk.get("revenue"))
+                                _set("netMargin",    lk.get("netMargin"))
+                                _set("grossMargin",  lk.get("grossMargin"))
+                                _set("eps",          f"${lk['eps']}" if lk.get("eps") and lk["eps"] != "N/A" else None)
+                                _set("forwardEPS",   f"${lk['fwdEPS']}" if lk.get("fwdEPS") and lk["fwdEPS"] != "N/A" else None)
+                                _set("peRatio",      f"{lk['peRatio']}×" if lk.get("peRatio") and lk["peRatio"] != "N/A" else None)
+                                _set("evEbitda",     f"{lk['evEbitda']}×" if lk.get("evEbitda") and lk["evEbitda"] != "N/A" else None)
+                                _set("roe",          lk.get("roe"))
+                                _set("debtToEquity", lk.get("debtEq"))
+                        # comparisonTable
+                        if parsed.get("comparisonTable"):
+                            for row in parsed["comparisonTable"]:
+                                if row.get("ticker","").upper() == tk_key.upper():
+                                    if lk.get("currentPrice"):
+                                        row["currentPrice"] = lk["currentPrice"]
+                                    if lk.get("analystConsensus"):
+                                        row["analystConsensus"] = lk["analystConsensus"]
+                # Also override using raw fmp_raw_data as fallback
+                elif st.session_state.get('fmp_raw_data') and parsed.get("stocks"):
+                    for tk_key, raw_fmp in st.session_state['fmp_raw_data'].items():
+                        q = (raw_fmp.get("quote") or [{}])
+                        q = q[0] if isinstance(q, list) and q else q if isinstance(q, dict) else {}
+                        live_price = q.get("price")
+                        if live_price:
+                            price_str = f"${live_price:,.2f}" if isinstance(live_price,(int,float)) else f"${live_price}"
+                            for sk in list(parsed["stocks"].keys()):
+                                if sk.upper() == tk_key.upper():
+                                    parsed["stocks"][sk]["currentPrice"] = price_str
+                            if parsed.get("comparisonTable"):
+                                for row in parsed["comparisonTable"]:
+                                    if row.get("ticker","").upper() == tk_key.upper():
+                                        row["currentPrice"] = price_str
+
+                # ── Fix duplicate top2 when only 1 stock entered ──
+                if parsed.get("top2"):
+                    seen = set()
+                    deduped = []
+                    for t in parsed["top2"]:
+                        tk = t.get("ticker","")
+                        if tk not in seen:
+                            seen.add(tk)
+                            deduped.append(t)
+                    parsed["top2"] = deduped
+
+
                 st.session_state['result'] = parsed
                 st.session_state['raw_response'] = None
                 st.session_state['data_source'] = "FMP + Claude" if fmp_contexts else "Claude only"
@@ -1061,7 +1248,8 @@ if st.session_state['result']:
                 price_strip += '<div></div>'
             # Intrinsic Value — purple
             if iv_val:
-                price_strip += f'<div style="background:#0c0818;border:1px solid #7c3aed44;padding:8px 10px;"><div style="font-size:9px;letter-spacing:1.5px;color:#94a3b8;text-transform:uppercase;margin-bottom:3px">Intrinsic Value</div><div style="font-family:Syne,sans-serif;font-size:15px;font-weight:800;color:#a78bfa">{iv_val}</div></div>'
+                _iv_lbl = 'FMP DCF' if 'FMP' in pp.get('intrinsicMethod','') else 'Intrinsic Value'
+                price_strip += f'<div style="background:#0c0818;border:1px solid #7c3aed44;padding:8px 10px;"><div style="font-size:9px;letter-spacing:1.5px;color:#94a3b8;text-transform:uppercase;margin-bottom:3px">{_iv_lbl}</div><div style="font-family:Syne,sans-serif;font-size:15px;font-weight:800;color:#a78bfa">{iv_val}</div></div>'
             else:
                 price_strip += '<div></div>'
             # Consensus Target — blue
@@ -1153,7 +1341,7 @@ if st.session_state['result']:
                 iv = pp.get('intrinsicValue','—')
                 st.markdown(f"""
                 <div class="card card-purple">
-                  <div class="label">Blended Intrinsic Value</div>
+                  <div class="label">{'FMP DCF — Live' if 'FMP' in pp.get('intrinsicMethod','') else 'Blended Intrinsic Value'}</div>
                   <div class="big-val big-val-purple">{iv}</div>
                   <div class="sub-text">{pp.get('intrinsicMethod','DCF + EV/EBITDA + P/E')}</div>
                   {delta_badge(iv, cur_raw)}
