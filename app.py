@@ -223,7 +223,7 @@ def finnhub_quote(ticker, fh_key):
     if not fh_key: return {"_error": "no key"}
     # Safety: strip spaces and non-alphanumeric chars — Finnhub needs clean symbol
     import re as _re
-    clean_ticker = _re.sub(r'[^A-Z0-9.-]', '', ticker.upper().strip())
+    clean_ticker = _re.sub(r'[^A-Z0-9.-]', '', ticker.upper().upper().strip())
     if not clean_ticker: return {"_error": "invalid ticker"}
     url = f"https://finnhub.io/api/v1/quote?symbol={clean_ticker}&token={fh_key}"
     try:
@@ -493,43 +493,6 @@ def calc_intrinsic_value(raw_fmp):
         return (None, None, None)
 # ──────────────────────────────────────────────────────────────────────────────
 
-def resolve_ticker_with_fmp(input_str, fmp_api_key):
-    """Resolve a company name or ticker to a valid ticker symbol."""
-    input_clean = input_str.strip()
-    if not input_clean: return ""
-    # If it already looks like a ticker (1-6 chars, only letters/dots) return as-is
-    if len(input_clean) <= 6 and re.match(r'^[A-Za-z.-]+$', input_clean):
-        return input_clean.upper()
-    # Search FMP WITHOUT exchange filter — NasdaqCM/NasdaqGS excluded by strict filter
-    data = fmp_get("/v3/search", fmp_api_key, {"query": input_clean, "limit": 10})
-    if data and isinstance(data, list):
-        input_lower = input_clean.lower()
-        best_sym = None
-        best_score = 0
-        for item in data:
-            sym  = item.get("symbol","")
-            name = item.get("name","").lower()
-            exch = item.get("exchangeShortName","").upper()
-            score = 0
-            if input_lower == name: score = 100
-            elif input_lower in name: score = 50 + (len(input_lower)/len(name))*30
-            elif name in input_lower: score = 40
-            # Prefer US exchanges including NasdaqCM
-            if exch in ("NASDAQ","NYSE","AMEX","NASDAQCM","NASDAQGS","NASDAQCAP","NCM","NGM","NMS"):
-                score += 10
-            # Prefer shorter tickers (main listing vs warrants/units)
-            if len(sym) <= 5: score += 5
-            # Penalise warrants, units, rights
-            if any(x in name for x in ("warrant","unit"," right"," note","acquisition")):
-                score -= 30
-            if score > best_score:
-                best_score = score
-                best_sym = sym
-        if best_sym and best_score > 20:
-            return best_sym.upper()
-        if data[0].get("symbol"):
-            return data[0]["symbol"].upper()
-    return input_clean.upper()
 def ss(key, default):
     if key not in st.session_state:
         st.session_state[key] = default
@@ -651,18 +614,18 @@ if not api_key:
     st.stop()
 
 # ── Stock inputs ──────────────────────────────────────────────────────────────
-with st.expander("▸ STOCKS TO ANALYZE (up to 5)", expanded=True):
+with st.expander("▸ STOCKS TO ANALYZE — ticker symbols only (up to 5)", expanded=True):
     for i in range(5):
         c1, c2, c3 = st.columns([0.5, 2, 2])
         with c1:
             st.markdown(f'<div style="font-size:9px;color:#93c5fd;font-family:Syne,sans-serif;font-weight:700;padding-top:8px">#{i+1}</div>', unsafe_allow_html=True)
         with c2:
-            st.markdown('<div class="label">Ticker or Company Name</div>', unsafe_allow_html=True)
+            st.markdown('<div class="label">Ticker Symbol</div>', unsafe_allow_html=True)
             st.session_state['tickers'][i] = st.text_input(
                 "Ticker or Company Name", value=st.session_state['tickers'][i],
-                placeholder="AAPL or Apple", key=f"tk{i}",
+                placeholder="AAPL", key=f"tk{i}",
                 label_visibility="collapsed"
-            ).strip()
+            ).upper().strip()
         with c3:
             st.markdown('<div class="label">Shares to Buy</div>', unsafe_allow_html=True)
             st.session_state['shares'][i] = st.text_input(
@@ -683,7 +646,7 @@ with st.expander("▸ MY PORTFOLIO — TOP 10 HOLDINGS (optional)"):
             st.session_state['holdings'][i]['ticker'] = st.text_input(
                 f"HTk{i}", value=st.session_state['holdings'][i]['ticker'],
                 placeholder="MSFT", max_chars=6, key=f"htk{i}", label_visibility="collapsed"
-            ).upper().strip()
+            ).upper().upper().strip()
         with c3:
             st.session_state['holdings'][i]['shares'] = st.text_input(
                 f"HSh{i}", value=st.session_state['holdings'][i]['shares'],
@@ -869,8 +832,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     }}
   }}
 }}
-CRITICAL STEP 1 — RESOLVE INPUTS TO TICKERS: Each input may be a ticker symbol OR a company name (possibly misspelled). Resolve each to the correct ticker symbol before analysis. Examples: "Apple" → AAPL, "Nvidia" → NVDA, "Vistra" → VST, "Mircosoft" → MSFT (fix typo), "visa inc" → V. Use the resolved ticker as the key in stocks{{}} and as the "ticker" field. If unsure, pick the closest match.
-CRITICAL STEP 2 — stocks{{}} MUST contain ALL {len(valid_tickers)} resolved tickers (one per input): inputs were [{', '.join(valid_tickers)}]. comparisonTable[] must have all {len(valid_tickers)}. top2[] picks best 2 but ALL appear in stocks{{}}. Include 5 analysts per stock, thesis max 8 words.
+CRITICAL — stocks{{}} MUST contain ALL {len(valid_tickers)} resolved tickers (one per input): inputs were [{', '.join(valid_tickers)}]. comparisonTable[] must have all {len(valid_tickers)}. top2[] picks best 2 but ALL appear in stocks{{}}. Include 5 analysts per stock, thesis max 8 words.
 SECTOR-AWARE VALUATION — FIRST check if the company is profitable:
 
 PRE-PROFIT / HIGH-GROWTH COMPANIES (negative earnings, negative FCF, negative EBITDA — e.g. RKLB, IONQ, JOBY, LUNR, ASTR, early-stage biotech/space/EV):
@@ -907,26 +869,10 @@ Sections text: 2 sentences each, not 10 words — be informative."""
                 st.stop()
             client = anthropic.Anthropic(api_key=api_key)
 
-            # ── Step 1: Resolve tickers ──
-            # Clean and resolve each input to a valid ticker symbol
-            resolved_tickers = []
-            ticker_map = {}  # original input -> resolved ticker
-            for vt in valid_tickers:
-                if fmp_key:
-                    rt = resolve_ticker_with_fmp(vt, fmp_key)
-                else:
-                    rt = vt.upper().strip()
-                # Safety check: if result still has spaces or is >6 chars, it's a name not a ticker
-                # Try to extract just the ticker part or strip spaces
-                import re as _re3
-                rt_clean = _re3.sub(r'[^A-Z0-9.-]', '', rt.upper().strip())
-                if not rt_clean:
-                    rt_clean = vt.upper().strip()[:6]
-                rt = rt_clean
-                resolved_tickers.append(rt)
-                ticker_map[vt] = rt
-            st.write(f"Resolved: {', '.join(f'{k}→{v}' if k.upper()!=v else v for k,v in ticker_map.items())}")
-
+            # ── Step 1: Clean ticker symbols ──
+            resolved_tickers = [re.sub(r'[^A-Z0-9.-]', '', vt.upper().strip()) for vt in valid_tickers]
+            resolved_tickers = [t for t in resolved_tickers if t]
+            st.write(f"Analyzing: {', '.join(resolved_tickers)}")
             # ── Step 2: Fetch FMP fundamentals + Finnhub real-time prices in parallel ──
             fmp_contexts = {}
             finnhub_prices = {}  # ticker -> {c, pc, dp} real-time from Finnhub
@@ -937,7 +883,7 @@ Sections text: 2 sentences each, not 10 words — be informative."""
                 def fetch_ticker(tk):
                     # Ensure ticker is a clean symbol before API calls
                     import re as _re2
-                    clean_tk = _re2.sub(r'[^A-Z0-9.-]', '', tk.upper().strip())
+                    clean_tk = _re2.sub(r'[^A-Z0-9.-]', '', tk.upper().upper().strip())
                     fmp_raw = fmp_fetch_all(clean_tk, fmp_key)
                     fh_quote = finnhub_quote(clean_tk, finnhub_key) if finnhub_key else {}
                     return tk, fmp_raw, fh_quote
@@ -1258,13 +1204,13 @@ if st.session_state['result']:
     # e.g. user typed "Apple" but Claude returns key "AAPL" — both are valid
     clean_stocks = {}
     for k, v in stocks.items():
-        tk = k.upper().strip()
+        tk = k.upper().upper().strip()
         if tk and tk not in clean_stocks:
             clean_stocks[tk] = {**v, 'ticker': tk}
     stocks = clean_stocks
     # Also add any top2 tickers that somehow didn't make it into stocks{}
     for t2 in top2:
-        tk2 = (t2.get('ticker') or '').upper().strip()
+        tk2 = (t2.get('ticker') or '').upper().upper().strip()
         if tk2 and tk2 not in stocks:
             stocks[tk2] = {
                 'ticker': tk2, 'companyName': t2.get('companyName',''),
@@ -1377,7 +1323,7 @@ if st.session_state['result']:
             cand_idx = valid_tickers.index(tk)
         else:
             # Try matching by inputAs field or by position in top2
-            input_as_field = s.get('inputAs','').upper().strip()
+            input_as_field = s.get('inputAs','').upper().upper().strip()
             for idx2, vt in enumerate(valid_tickers):
                 if vt.upper() == tk or vt.upper() == input_as_field:
                     cand_idx = idx2
