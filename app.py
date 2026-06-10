@@ -500,38 +500,36 @@ def resolve_ticker_with_fmp(input_str, fmp_api_key):
     # If it already looks like a ticker (1-6 chars, only letters/dots) return as-is
     if len(input_clean) <= 6 and re.match(r'^[A-Za-z.-]+$', input_clean):
         return input_clean.upper()
-    # Search FMP — try both with and without exchange filter
-    for exchange_filter in ["NASDAQ,NYSE,AMEX", ""]:
-        params = {"query": input_clean, "limit": 10}
-        if exchange_filter:
-            params["exchange"] = exchange_filter
-        data = fmp_get("/v3/search", fmp_api_key, params)
-        if data and isinstance(data, list):
-            input_lower = input_clean.lower()
-            # Score each result
-            best_sym = None
-            best_score = 0
-            for item in data:
-                sym  = item.get("symbol","")
-                name = item.get("name","").lower()
-                score = 0
-                if input_lower == name: score = 100
-                elif input_lower in name: score = 50 + (len(input_lower)/len(name))*30
-                elif name in input_lower: score = 40
-                # Bonus for short tickers (more likely to be the main listing)
-                if len(sym) <= 5: score += 5
-                if score > best_score:
-                    best_score = score
-                    best_sym = sym
-            if best_sym and best_score > 20:
-                return best_sym.upper()
-            # Fall back to first result
-            if data[0].get("symbol"):
-                return data[0]["symbol"].upper()
+    # Search FMP WITHOUT exchange filter — NasdaqCM/NasdaqGS excluded by strict filter
+    data = fmp_get("/v3/search", fmp_api_key, {"query": input_clean, "limit": 10})
+    if data and isinstance(data, list):
+        input_lower = input_clean.lower()
+        best_sym = None
+        best_score = 0
+        for item in data:
+            sym  = item.get("symbol","")
+            name = item.get("name","").lower()
+            exch = item.get("exchangeShortName","").upper()
+            score = 0
+            if input_lower == name: score = 100
+            elif input_lower in name: score = 50 + (len(input_lower)/len(name))*30
+            elif name in input_lower: score = 40
+            # Prefer US exchanges including NasdaqCM
+            if exch in ("NASDAQ","NYSE","AMEX","NASDAQCM","NASDAQGS","NASDAQCAP","NCM","NGM","NMS"):
+                score += 10
+            # Prefer shorter tickers (main listing vs warrants/units)
+            if len(sym) <= 5: score += 5
+            # Penalise warrants, units, rights
+            if any(x in name for x in ("warrant","unit"," right"," note","acquisition")):
+                score -= 30
+            if score > best_score:
+                best_score = score
+                best_sym = sym
+        if best_sym and best_score > 20:
+            return best_sym.upper()
+        if data[0].get("symbol"):
+            return data[0]["symbol"].upper()
     return input_clean.upper()
-
-
-# ── Session state ─────────────────────────────────────────────────────────────
 def ss(key, default):
     if key not in st.session_state:
         st.session_state[key] = default
