@@ -947,14 +947,16 @@ if st.session_state['result']:
             badge_clr = '#000'    if i==0 else '#fff'
             entry_note = esc(t.get('entryNote',''))
             buy_reason = esc(t.get('buyReason',''))
-
+            t2_cur = esc(t2_stock.get('currentPrice',''))
             price_pills = ''
+            if t2_cur:
+                price_pills += f'<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #ffffff0a"><span style="font-size:10px;color:#94a3b8;letter-spacing:1px;text-transform:uppercase">Current Price</span><span style="font-family:Syne,sans-serif;font-size:14px;font-weight:800;color:#f0f6ff">{t2_cur}</span></div>'
             if t2_iv:
                 price_pills += f'<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #ffffff0a"><span style="font-size:10px;color:#94a3b8;letter-spacing:1px;text-transform:uppercase">Intrinsic Value</span><span style="font-family:Syne,sans-serif;font-size:14px;font-weight:800;color:#a78bfa">{t2_iv}</span></div>'
             if t2_con:
                 price_pills += f'<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #ffffff0a"><span style="font-size:10px;color:#94a3b8;letter-spacing:1px;text-transform:uppercase">Consensus Target</span><span style="font-family:Syne,sans-serif;font-size:14px;font-weight:800;color:#93c5fd">{t2_con}</span></div>'
             if t2_ent:
-                price_pills += f'<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0"><span style="font-size:10px;color:#94a3b8;letter-spacing:1px;text-transform:uppercase">Entry Price</span><span style="font-family:Syne,sans-serif;font-size:14px;font-weight:800;color:#4ade80">{t2_ent}</span></div>'
+                price_pills += f'<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0"><span style="font-size:10px;color:#94a3b8;letter-spacing:1px;text-transform:uppercase">Suggested Entry</span><span style="font-family:Syne,sans-serif;font-size:14px;font-weight:800;color:#4ade80">{t2_ent}</span></div>'
 
             st.markdown(
                 f'<div class="card {cls}" style="position:relative">'
@@ -1044,19 +1046,32 @@ if st.session_state['result']:
         inputas_part = ("entered as: " + input_as) if (input_as and input_as.upper() != tk) else ""
 
         # Price strip — intrinsic value, consensus, entry
+        # Current price — from FMP quote or Claude response
+        cur_price_display = s.get('currentPrice','')
+        if not cur_price_display and cur_raw:
+            cur_price_display = f'${cur_raw}'
+
         price_strip = ''
-        if iv_val or cons_val or entry_val:
-            price_strip = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px">'
+        if cur_price_display or iv_val or cons_val or entry_val:
+            price_strip = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px">'
+            # Current Price — white/neutral
+            if cur_price_display:
+                price_strip += f'<div style="background:#0d1825;border:1px solid #3b82f644;padding:8px 10px;"><div style="font-size:9px;letter-spacing:1.5px;color:#94a3b8;text-transform:uppercase;margin-bottom:3px">Current Price</div><div style="font-family:Syne,sans-serif;font-size:15px;font-weight:800;color:#f0f6ff">{esc(cur_price_display)}</div></div>'
+            else:
+                price_strip += '<div></div>'
+            # Intrinsic Value — purple
             if iv_val:
                 price_strip += f'<div style="background:#0c0818;border:1px solid #7c3aed44;padding:8px 10px;"><div style="font-size:9px;letter-spacing:1.5px;color:#94a3b8;text-transform:uppercase;margin-bottom:3px">Intrinsic Value</div><div style="font-family:Syne,sans-serif;font-size:15px;font-weight:800;color:#a78bfa">{iv_val}</div></div>'
             else:
                 price_strip += '<div></div>'
+            # Consensus Target — blue
             if cons_val:
                 price_strip += f'<div style="background:#080f1f;border:1px solid #3b82f644;padding:8px 10px;"><div style="font-size:9px;letter-spacing:1.5px;color:#94a3b8;text-transform:uppercase;margin-bottom:3px">Consensus Target</div><div style="font-family:Syne,sans-serif;font-size:15px;font-weight:800;color:#93c5fd">{cons_val}</div></div>'
             else:
                 price_strip += '<div></div>'
+            # Suggested Entry — green
             if entry_val:
-                price_strip += f'<div style="background:#060f09;border:1px solid #16a34a44;padding:8px 10px;"><div style="font-size:9px;letter-spacing:1.5px;color:#94a3b8;text-transform:uppercase;margin-bottom:3px">Entry Price</div><div style="font-family:Syne,sans-serif;font-size:15px;font-weight:800;color:#4ade80">{entry_val}</div></div>'
+                price_strip += f'<div style="background:#060f09;border:1px solid #16a34a44;padding:8px 10px;"><div style="font-size:9px;letter-spacing:1.5px;color:#94a3b8;text-transform:uppercase;margin-bottom:3px">Suggested Entry</div><div style="font-family:Syne,sans-serif;font-size:15px;font-weight:800;color:#4ade80">{entry_val}</div></div>'
             else:
                 price_strip += '<div></div>'
             price_strip += '</div>'
@@ -1125,7 +1140,15 @@ if st.session_state['result']:
                 st.markdown(f'<div class="sec-hdr">◈ Asset Analysis Ledger</div><div class="sec-body">{s["summary"]}</div>', unsafe_allow_html=True)
 
             # Key numbers
-            kc1, kc2, kc3 = st.columns(3)
+            kc0, kc1, kc2, kc3 = st.columns(4)
+            with kc0:
+                cp_disp = esc(s.get('currentPrice','')) or (f'${cur_raw}' if cur_raw else '—')
+                st.markdown(f"""
+                <div class="card" style="border-color:#3b82f644">
+                  <div class="label">Current Price</div>
+                  <div class="big-val" style="color:#f0f6ff">{cp_disp}</div>
+                  <div class="sub-text">Live from FMP</div>
+                </div>""", unsafe_allow_html=True)
             with kc1:
                 iv = pp.get('intrinsicValue','—')
                 st.markdown(f"""
