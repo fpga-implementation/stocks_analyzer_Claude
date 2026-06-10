@@ -1778,6 +1778,5 @@ if st.session_state['result']:
                           <td style="color:#f0f6ff;font-weight:700">{p.get("stockVal","—")}</td>
                           <td><span style="color:{v_color};font-size:10px">{v}</span></td>
                         </tr>"""
-                    peer_table = (
-                        '<table class="data-table"><thead><tr>'
-                        '<th>Peer</th><th>Metric</th><th>Peer</th><th>This Stock</th><t
+                    thead = '<table class="data-table"><thead><tr><th>Peer</th><th>Metric</th><th>Peer</th><th>This Stock</th><th>vs Peer</th></tr></thead><tbody>'
+                    st
