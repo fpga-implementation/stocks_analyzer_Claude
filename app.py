@@ -922,8 +922,10 @@ Sections text: 2 sentences each, not 10 words — be informative."""
             client = anthropic.Anthropic(api_key=api_key)
 
             # ── Step 2: Fetch FMP fundamentals + Finnhub real-time prices in parallel ──
-            fmp_contexts = {}
+            fmp_contexts   = {}
             finnhub_prices = {}
+            local_raw_data = {}   # initialize here so Step 3 always has it in scope
+            local_sentiment= {}
 
             if fmp_key:
                 st.write(f"Fetching live market data for {', '.join(resolved_tickers)}...")
@@ -977,9 +979,7 @@ Sections text: 2 sentences each, not 10 words — be informative."""
             locked_data = {}  # ticker -> dict of locked fields
             live_data_block = ""
 
-            # Use local_raw_data directly (guaranteed in scope, no session_state timing issues)
-            if not fmp_key:
-                local_raw_data = {}
+            # Use local_raw_data directly (guaranteed in scope)
             if fmp_contexts and local_raw_data:
                 fmp_raw = local_raw_data
                 locked_lines = []
@@ -1264,8 +1264,19 @@ Sections text: 2 sentences each, not 10 words — be informative."""
                 status.update(label="Analysis complete!", state="complete")
         except Exception as e:
             st.error(f"Error: {e}")
+            import traceback
+            st.error(traceback.format_exc())
         finally:
             st.session_state['running'] = False
+            # Always set data_source based on what was actually fetched
+            if not st.session_state.get('data_source') or st.session_state.get('data_source') == 'Claude only':
+                if fmp_contexts or local_raw_data:
+                    if finnhub_prices:
+                        st.session_state['data_source'] = "Finnhub + FMP + Claude"
+                    else:
+                        st.session_state['data_source'] = "FMP + Claude"
+                    if fmp_contexts:
+                        st.session_state['fmp_tickers'] = list(fmp_contexts.keys())
 
 # ── Results ───────────────────────────────────────────────────────────────────
 if st.session_state['result']:
