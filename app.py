@@ -925,9 +925,6 @@ Sections text: 2 sentences each, not 10 words — be informative."""
             fmp_contexts = {}
             finnhub_prices = {}
 
-            # Debug: show key status
-            st.write(f"Keys: FMP={'✓' if fmp_key else '✗ MISSING'} | Finnhub={'✓' if finnhub_key else '✗ MISSING'} | Anthropic={'✓' if api_key else '✗ MISSING'}")
-
             if fmp_key:
                 st.write(f"Fetching live market data for {', '.join(resolved_tickers)}...")
                 # Fetch FMP + Finnhub simultaneously
@@ -1251,8 +1248,18 @@ Sections text: 2 sentences each, not 10 words — be informative."""
 
                 st.session_state['result'] = parsed
                 st.session_state['raw_response'] = None
-                st.session_state['data_source'] = ("Finnhub + FMP + Claude" if st.session_state.get("finnhub_prices") else "FMP + Claude") if fmp_contexts else "Claude only"
-                st.session_state['fmp_tickers'] = list(fmp_contexts.keys()) if fmp_contexts else []
+                # Determine data source — check multiple signals
+                has_fmp      = bool(fmp_contexts or st.session_state.get('fmp_raw_data'))
+                has_finnhub  = bool(st.session_state.get('finnhub_prices'))
+                has_live_iv  = bool(st.session_state.get('fmp_locked'))
+                if has_finnhub and has_fmp:
+                    ds = "Finnhub + FMP + Claude"
+                elif has_fmp or has_live_iv:
+                    ds = "FMP + Claude"
+                else:
+                    ds = "Claude only"
+                st.session_state['data_source'] = ds
+                st.session_state['fmp_tickers'] = list((fmp_contexts or st.session_state.get('fmp_raw_data',{})).keys())
                 status.update(label="Analysis complete!", state="complete")
         except Exception as e:
             st.error(f"Error: {e}")
