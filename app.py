@@ -936,7 +936,20 @@ Sections text: 2 sentences each, not 10 words — be informative."""
                     fmp_raw  = fmp_fetch_all(clean_tk, fmp_key)
                     fh_quote = finnhub_quote(clean_tk, finnhub_key) if finnhub_key else {}
                     fh_sent  = finnhub_sentiment(clean_tk, finnhub_key) if finnhub_key else {}
-                    return tk, fmp_raw, fh_quote, fh_sent
+                    # Finnhub earnings calendar (more reliable than FMP free tier)
+                    fh_earn  = {}
+                    if finnhub_key:
+                        try:
+                            import urllib.parse as _up
+                            from datetime import datetime as _dt3, timedelta as _td3
+                            today  = _dt3.now().strftime("%Y-%m-%d")
+                            future = (_dt3.now() + _td3(days=365)).strftime("%Y-%m-%d")
+                            url = f"https://finnhub.io/api/v1/calendar/earnings?symbol={clean_tk}&from={today}&to={future}&token={finnhub_key}"
+                            with urllib.request.urlopen(url, timeout=8) as r:
+                                fh_earn = json.loads(r.read().decode())
+                        except Exception:
+                            fh_earn = {}
+                    return tk, fmp_raw, fh_quote, fh_sent, fh_earn
 
                 # Collect all results in local dicts first — thread-safe
                 local_raw_data  = {}
@@ -944,7 +957,7 @@ Sections text: 2 sentences each, not 10 words — be informative."""
                 with ThreadPoolExecutor(max_workers=5) as ex:
                     futures = {ex.submit(fetch_ticker, tk): tk for tk in resolved_tickers}
                     for fut in as_completed(futures):
-                        tk, raw, fh, fh_sent = fut.result()
+                        tk, raw, fh, fh_sent, fh_earn = fut.result()
                         if fh.get("c") and fh["c"] > 0:
                             if isinstance(raw.get("quote"), list) and raw["quote"]:
                                 raw["quote"][0]["price"] = fh["c"]
@@ -964,6 +977,8 @@ Sections text: 2 sentences each, not 10 words — be informative."""
                         local_raw_data[tk] = raw
                         if fh_sent:
                             local_sentiment[tk] = fh_sent
+                        if fh_earn:
+                            raw['_fh_earnings'] = fh_earn
                         st.write(f"  ✓ {tk} data fetched ({src})")
                 # Assign to session_state AFTER all threads complete
                 st.session_state['fmp_raw_data']          = local_raw_data
@@ -1051,30 +1066,40 @@ Sections text: 2 sentences each, not 10 words — be informative."""
                         locked["fwdRevenue"]     = fm(est.get("estimatedRevenueAvg")) if est.get("estimatedRevenueAvg") else "N/A"
                         locked["numAnalysts"]    = str(est.get("numberAnalystEstimatedRevenue","N/A"))
 
-                    # Next earnings date — try upcoming endpoint first, then historical
+                    # Next earnings — try Finnhub first (more reliable), then FMP
                     from datetime import datetime as _dt
                     today_str = _dt.now().strftime("%Y-%m-%d")
-                    # Try upcoming earnings endpoint first
-                    earn_up = raw_fmp.get("earnings_upcoming") or []
-                    earn_hist = raw_fmp.get("earnings_next") or []
-                    earn_combined = []
-                    for src in [earn_up, earn_hist]:
-                        if isinstance(src, list):
-                            earn_combined.extend(src)
-                        elif isinstance(src, dict) and src.get("earningsCalendar"):
-                            earn_combined.extend(src["earningsCalendar"])
-                    future_earns = [e for e in earn_combined
-                                    if e.get("date","") >= today_str
-                                    and e.get("symbol","").upper() == ticker.upper()]
-                    if not future_earns:
-                        # Try without symbol filter (upcoming endpoint returns all symbols)
-                        future_earns = [e for e in earn_combined if e.get("date","") >= today_str]
-                    future_earns.sort(key=lambda x: x.get("date",""))
-                    if future_earns:
-                        ne = future_earns[0]
-                        locked["nextEarningsDate"]   = ne.get("date","N/A")
-                        locked["nextEarningsEPS"]    = ne.get("epsEstimated","N/A")
-                        locked["nextEarningsTiming"] = ne.get("time","N/A")
+                    earn_found = False
+                    # Try Finnhub earnings calendar
+                    fh_earn_data = raw_fmp.get('_fh_earnings', {})
+                    fh_earn_list = fh_earn_data.get('earningsCalendar', []) if isinstance(fh_earn_data, dict) else []
+                    if fh_earn_list:
+                        fh_future = [e for e in fh_earn_list if e.get('date','') >= today_str]
+                        fh_future.sort(key=lambda x: x.get('date',''))
+                        if fh_future:
+                            ne = fh_future[0]
+                            locked["nextEarningsDate"]   = ne.get("date","N/A")
+                            locked["nextEarningsEPS"]    = ne.get("epsEstimated","N/A")
+                            locked["nextEarningsTiming"] = ne.get("hour","N/A")
+                            earn_found = True
+                    # Fallback: FMP earnings calendar
+                    if not earn_found:
+                        earn_up   = raw_fmp.get("earnings_upcoming") or []
+                        earn_hist = raw_fmp.get("earnings_next") or []
+                        earn_combined = []
+                        for src2 in [earn_up, earn_hist]:
+                            if isinstance(src2, list): earn_combined.extend(src2)
+                            elif isinstance(src2, dict) and src2.get("earningsCalendar"):
+                                earn_combined.extend(src2["earningsCalendar"])
+                        future_earns = sorted(
+                            [e for e in earn_combined if e.get("date","") >= today_str],
+                            key=lambda x: x.get("date","")
+                        )
+                        if future_earns:
+                            ne = future_earns[0]
+                            locked["nextEarningsDate"]   = ne.get("date","N/A")
+                            locked["nextEarningsEPS"]    = ne.get("epsEstimated","N/A")
+                            locked["nextEarningsTiming"] = ne.get("time","N/A")
 
                     # Calculate IV using correct model for this company type
                     iv_val_c, iv_meth_c, iv_desc_c = calc_intrinsic_value(raw_fmp)
@@ -1268,15 +1293,15 @@ Sections text: 2 sentences each, not 10 words — be informative."""
             st.error(traceback.format_exc())
         finally:
             st.session_state['running'] = False
-            # Always set data_source based on what was actually fetched
-            if not st.session_state.get('data_source') or st.session_state.get('data_source') == 'Claude only':
-                if fmp_contexts or local_raw_data:
-                    if finnhub_prices:
-                        st.session_state['data_source'] = "Finnhub + FMP + Claude"
-                    else:
-                        st.session_state['data_source'] = "FMP + Claude"
-                    if fmp_contexts:
-                        st.session_state['fmp_tickers'] = list(fmp_contexts.keys())
+            # Always overwrite data_source based on what was actually fetched
+            if fmp_contexts or local_raw_data:
+                if finnhub_prices:
+                    st.session_state['data_source'] = "Finnhub + FMP + Claude"
+                else:
+                    st.session_state['data_source'] = "FMP + Claude"
+                st.session_state['fmp_tickers'] = list(fmp_contexts.keys()) if fmp_contexts else list(local_raw_data.keys())
+            elif not st.session_state.get('data_source'):
+                st.session_state['data_source'] = "Claude only" 
 
 # ── Results ───────────────────────────────────────────────────────────────────
 if st.session_state['result']:
