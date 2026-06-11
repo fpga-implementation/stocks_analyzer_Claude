@@ -936,11 +936,13 @@ Sections text: 2 sentences each, not 10 words — be informative."""
                     fh_sent  = finnhub_sentiment(clean_tk, finnhub_key) if finnhub_key else {}
                     return tk, fmp_raw, fh_quote, fh_sent
 
+                # Collect all results in local dicts first — thread-safe
+                local_raw_data  = {}
+                local_sentiment = {}
                 with ThreadPoolExecutor(max_workers=5) as ex:
                     futures = {ex.submit(fetch_ticker, tk): tk for tk in resolved_tickers}
                     for fut in as_completed(futures):
                         tk, raw, fh, fh_sent = fut.result()
-                        # Override FMP quote price with Finnhub real-time price
                         if fh.get("c") and fh["c"] > 0:
                             if isinstance(raw.get("quote"), list) and raw["quote"]:
                                 raw["quote"][0]["price"] = fh["c"]
@@ -949,7 +951,6 @@ Sections text: 2 sentences each, not 10 words — be informative."""
                                 raw["quote"]["price"] = fh["c"]
                                 raw["quote"]["changesPercentage"] = fh.get("dp", 0)
                             else:
-                                # quote missing — create it
                                 raw["quote"] = [{"price": fh["c"], "changesPercentage": fh.get("dp",0)}]
                             finnhub_prices[tk] = fh
                             src = f"Finnhub ${fh['c']:,.2f} (real-time) + FMP (fundamentals)"
@@ -958,15 +959,15 @@ Sections text: 2 sentences each, not 10 words — be informative."""
                         else:
                             src = "FMP only (Finnhub returned no price)"
                         fmp_contexts[tk] = format_fmp_context(tk, raw)
-                        st.write(f"  ✓ {tk} data fetched ({src})")
-                        if 'fmp_raw_data' not in st.session_state:
-                            st.session_state['fmp_raw_data'] = {}
-                        st.session_state['fmp_raw_data'][tk] = raw
+                        local_raw_data[tk] = raw
                         if fh_sent:
-                            if 'finnhub_sentiment_data' not in st.session_state:
-                                st.session_state['finnhub_sentiment_data'] = {}
-                            st.session_state['finnhub_sentiment_data'][tk] = fh_sent
-                st.session_state['finnhub_prices'] = finnhub_prices
+                            local_sentiment[tk] = fh_sent
+                        st.write(f"  ✓ {tk} data fetched ({src})")
+                # Assign to session_state AFTER all threads complete
+                st.session_state['fmp_raw_data']          = local_raw_data
+                st.session_state['finnhub_prices']        = finnhub_prices
+                st.session_state['finnhub_sentiment_data']= local_sentiment
+                st.write(f"  FMP data stored: {list(local_raw_data.keys())}")
             else:
                 st.warning("⚠ FMP_API_KEY not set — using Claude training data only.")
 
@@ -976,8 +977,11 @@ Sections text: 2 sentences each, not 10 words — be informative."""
             locked_data = {}  # ticker -> dict of locked fields
             live_data_block = ""
 
-            if fmp_contexts and st.session_state.get('fmp_raw_data'):
-                fmp_raw = st.session_state['fmp_raw_data']
+            # Use local_raw_data directly (guaranteed in scope, no session_state timing issues)
+            if not fmp_key:
+                local_raw_data = {}
+            if fmp_contexts and local_raw_data:
+                fmp_raw = local_raw_data
                 locked_lines = []
                 for tk, raw_fmp in fmp_raw.items():
                     locked = {}
@@ -1248,18 +1252,15 @@ Sections text: 2 sentences each, not 10 words — be informative."""
 
                 st.session_state['result'] = parsed
                 st.session_state['raw_response'] = None
-                # Determine data source — check multiple signals
-                has_fmp      = bool(fmp_contexts or st.session_state.get('fmp_raw_data'))
-                has_finnhub  = bool(st.session_state.get('finnhub_prices'))
-                has_live_iv  = bool(st.session_state.get('fmp_locked'))
-                if has_finnhub and has_fmp:
+                # Determine data source using local variables (reliable)
+                if finnhub_prices and fmp_contexts:
                     ds = "Finnhub + FMP + Claude"
-                elif has_fmp or has_live_iv:
+                elif fmp_contexts:
                     ds = "FMP + Claude"
                 else:
                     ds = "Claude only"
                 st.session_state['data_source'] = ds
-                st.session_state['fmp_tickers'] = list((fmp_contexts or st.session_state.get('fmp_raw_data',{})).keys())
+                st.session_state['fmp_tickers'] = list(fmp_contexts.keys())
                 status.update(label="Analysis complete!", state="complete")
         except Exception as e:
             st.error(f"Error: {e}")
